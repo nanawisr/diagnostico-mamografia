@@ -1,0 +1,8 @@
+streamlit
+opencv-python-headless
+numpy
+pandas
+matplotlib
+roboflow
+gspread
+google-auth
