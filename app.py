@@ -17,10 +17,13 @@ SHEET_ID = "1sdmCsIJmRz84Fu26KtTrE_rTTh7SzoS5womeVctnXQ4"
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Plataforma de Diagnóstico Digital", layout="wide")
 
+# Inicializar estado
 if 'analizado' not in st.session_state:
     st.session_state.analizado = False
+if 'datos_reporte' not in st.session_state:
+    st.session_state.datos_reporte = None
 
-# --- ESTILOS CSS ---
+# --- ESTILOS CSS ORIGINALES ---
 st.markdown("""
 <style>
     .stButton > button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; background-color: #1e88e5 !important; color: white !important; border: none; }
@@ -39,11 +42,12 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Lógica de visualización
+# --- FLUJO DE TRABAJO ---
 if not st.session_state.analizado:
+    # 1. Instrucción Inicial (Solo visible antes del resultado)
     st.markdown('<p class="instruction-text">Por favor, rellene los datos solicitados e inserte la mamografía para su análisis.</p>', unsafe_allow_html=True)
     
-    # Formulario
+    # 2. Formulario
     c1, c2 = st.columns([1, 2])
     tipo_reg = c1.selectbox("Registro:", ["Nuevo", "Existente"])
     expediente = c2.text_input("Expediente:", value="00478119")
@@ -59,9 +63,9 @@ if not st.session_state.analizado:
         if not uploader:
             st.warning("⚠️ Cargue una imagen antes de continuar.")
         else:
-            with st.spinner("🔬 Procesando análisis clínico..."):
+            with st.spinner("🔬 Procesando análisis y creando registro histórico..."):
                 try:
-                    # 1. IA Roboflow
+                    # IA Roboflow
                     file_bytes = np.asarray(bytearray(uploader.read()), dtype=np.uint8)
                     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
                     h, w, _ = img.shape
@@ -87,13 +91,13 @@ if not st.session_state.analizado:
                         overlay[mask > 0] = [255, 0, 0]
                         res_img = cv2.addWeighted(img_rgb, 0.7, overlay, 0.3, 0)
 
-                        # 2. Subida a ImgBB
+                        # Subida a ImgBB
                         _, img_encoded = cv2.imencode('.jpg', cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR))
                         img_bb_64 = base64.b64encode(img_encoded).decode('utf-8')
                         response_bb = requests.post("https://api.imgbb.com/1/upload", data={"key": API_KEY_IMGBB, "image": img_bb_64})
                         url_imagen = response_bb.json()["data"]["url"]
 
-                        # 3. Google Sheets (Siempre agrega una nueva fila)
+                        # Google Sheets (FORZAR NUEVA FILA SIEMPRE)
                         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         if "service_account_base64" in st.secrets:
                             b64_str = st.secrets["service_account_base64"].strip()
@@ -104,23 +108,12 @@ if not st.session_state.analizado:
                             gc = gspread.authorize(creds)
                             sh = gc.open_by_key(SHEET_ID).sheet1
                             
-                            # La función append_row siempre inserta al final, creando el historial
-                            sh.append_row([
-                                now_str, 
-                                str(tipo_reg), 
-                                str(expediente), 
-                                str(nombre), 
-                                str(a_pat), 
-                                str(a_mat), 
-                                int(h*w), 
-                                pix_tumor, 
-                                round(porcentaje, 4), 
-                                url_imagen
-                            ])
+                            # Usar append_row garantiza que NO sobreescriba, sino que cree una entrada nueva
+                            sh.append_row([now_str, str(tipo_reg), str(expediente), str(nombre), str(a_pat), str(a_mat), int(h*w), pix_tumor, round(porcentaje, 4), url_imagen])
 
-                        # Datos para el reporte
+                        # Guardar en estado para el reporte
                         st.session_state.res_img = res_img
-                        st.session_state.datos = {
+                        st.session_state.datos_reporte = {
                             "paciente": f"{nombre} {a_pat} {a_mat}",
                             "expediente": expediente,
                             "totales": f"{h*w:,} px",
@@ -132,13 +125,13 @@ if not st.session_state.analizado:
                         st.session_state.analizado = True
                         st.rerun()
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    st.error(f"Error técnico: {e}")
 
-# --- RESULTADOS ---
-if st.session_state.analizado:
+# --- SECCIÓN DE RESULTADOS ---
+if st.session_state.analizado and st.session_state.datos_reporte:
     st.image(st.session_state.res_img, use_container_width=True)
     
-    d = st.session_state.datos
+    d = st.session_state.datos_reporte
     st.markdown(f"""
     <div class="report-container">
         <div class="report-header">REPORTE TÉCNICO DE SEGMENTACIÓN</div>
@@ -167,8 +160,11 @@ if st.session_state.analizado:
     """, unsafe_allow_html=True)
 
     st.write("---")
+    # El botón de "Nuevo Estudio" limpia el estado por completo
     if st.button("Nuevo Estudio"):
         st.session_state.analizado = False
+        st.session_state.datos_reporte = None
         st.rerun()
 
 st.write("---")
+    
