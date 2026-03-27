@@ -7,25 +7,22 @@ import os
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- CONFIGURACIÓN ---
-# He verificado tu Key y tus IDs de la captura
-API_KEY_VAL = "nOMi9VHi25eRhP420XFn"
-WORKSPACE_ID = "diseo-de-proyectos"
-PROJECT_NAME = "segmentacion-tumores-mamografia-sn1wk"
-VERSION_NUM = 6 
+# --- CONFIGURACIÓN CON TU NUEVA LLAVE ---
+API_KEY = "rf_h8FmtmuaWPRTk6SZn8Y0IK1JUcu1"
+WORKSPACE = "diseo-de-proyectos"
+PROJECT_ID = "segmentacion-tumores-mamografia-sn1wk"
+VERSION = 6 
 SPREADSHEET_NAME = "Base_Datos_Pacientes"
 
 # --- FUNCIONES DE CONEXIÓN ---
 @st.cache_resource
 def cargar_modelo():
     try:
-        # Forma alternativa de conectar: pasamos la key directamente en el constructor
-        rf = Roboflow(api_key=API_KEY_VAL)
-        project = rf.workspace(WORKSPACE_ID).project(PROJECT_NAME)
-        return project.version(VERSION_NUM).model
+        rf = Roboflow(api_key=API_KEY)
+        project = rf.workspace(WORKSPACE).project(PROJECT_ID)
+        return project.version(VERSION).model
     except Exception as e:
-        # Esto nos dirá el error exacto si falla
-        st.sidebar.error(f"Error de conexión Roboflow: {e}")
+        st.sidebar.error(f"Error de Roboflow: {e}")
         return None
 
 def conectar_google():
@@ -39,7 +36,7 @@ def conectar_google():
     except:
         return None
 
-# --- INTERFAZ ---
+# --- INTERFAZ (Tu diseño original) ---
 st.set_page_config(page_title="Plataforma de Diagnóstico Digital", layout="wide")
 
 st.markdown("""
@@ -49,9 +46,6 @@ st.markdown("""
     .btn-nueva > div > button { background-color: #27ae60 !important; color: white !important; }
     .header-box { background-color: #2c3e50; padding: 20px; border-radius: 5px; border-left: 10px solid #3498db; margin-bottom: 20px; }
 </style>
-""", unsafe_allow_html=True)
-
-st.markdown("""
 <div class="header-box">
     <h1 style="color: white; margin: 0; font-family: sans-serif;">Plataforma de Diagnóstico Digital</h1>
     <p style="color: #bdc3c7; margin: 5px 0 0 0;">MÓDULO DE ANÁLISIS CLÍNICO AVANZADO</p>
@@ -79,13 +73,11 @@ if ejecutar:
     if not uploader:
         st.error("❌ Por favor, cargue una imagen.")
     else:
-        # Intentamos cargar el modelo
         model = cargar_modelo()
-        
         if model is None:
-            st.error("❌ Error: No se pudo conectar con Roboflow. Verifique que su proyecto no esté bloqueado o la API Key sea correcta.")
+            st.error("❌ Error de conexión. Verifique los logs en Streamlit.")
         else:
-            with st.spinner("🔬 Analizando..."):
+            with st.spinner("🔬 Procesando análisis..."):
                 file_bytes = np.asarray(bytearray(uploader.read()), dtype=np.uint8)
                 img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
                 h, w, _ = img.shape
@@ -102,7 +94,7 @@ if ejecutar:
 
                     if not preds:
                         st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), use_container_width=True)
-                        st.success("✅ No se detectaron hallazgos tumorales.")
+                        st.success("✅ Análisis finalizado: Sin hallazgos tumorales detectados.")
                     else:
                         for p in preds:
                             pts = np.array([(int(pt['x']), int(pt['y'])) for pt in p['points']], np.int32)
@@ -116,6 +108,7 @@ if ejecutar:
                         overlay[mask > 0] = [255, 0, 0]
                         st.image(cv2.addWeighted(img_rgb, 0.7, overlay, 0.3, 0), use_container_width=True)
 
+                        # REPORTE TÉCNICO
                         st.markdown(f"""
                         <div style="border: 2px solid #3498db; padding: 20px; border-radius: 10px; background-color: #f8f9fa;">
                             <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; margin-top: 0;">REPORTE TÉCNICO DE SEGMENTACIÓN</h2>
@@ -134,7 +127,7 @@ if ejecutar:
                     if gc:
                         sh = gc.open(SPREADSHEET_NAME).sheet1
                         sh.append_row([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), tipo_registro, expediente, nombre, a_paterno, a_materno, h*w, tumor_px, round(porcentaje, 4)])
-                        st.toast("✅ Guardado en Sheets.")
+                        st.toast("✅ Sincronizado correctamente.")
 
                 except Exception as e:
                     st.error(f"Error técnico: {e}")
