@@ -26,7 +26,6 @@ st.markdown("""
     .header-box h1 { color: white; margin: 0; font-family: sans-serif; font-size: 42px; }
     .header-box p { color: #bdc3c7; margin: 5px 0 0 0; font-size: 18px; text-transform: uppercase; }
     .report-container { border: 1px solid #ced4da; padding: 20px; border-radius: 10px; background-color: white; font-family: sans-serif; margin-top: 20px; }
-    .report-header { border-bottom: 2px solid #3498db; margin-bottom: 20px; padding-bottom: 10px; color: #2c3e50; font-size: 24px; text-transform: uppercase; }
 </style>
 <div class="header-box">
     <h1>Plataforma de Diagnóstico Digital</h1>
@@ -78,24 +77,26 @@ if st.button("Ejecutar Análisis Clínico"):
                     
                     st.image(res_img, use_container_width=True)
 
-                    # 2. SINCRONIZACIÓN (MÉTODO BASE64 - ANTIBALAS)
+                    # 2. SINCRONIZACIÓN (AUTO-REPARACIÓN DE PADDING)
                     drive_id = "No sincronizado"
                     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     file_name = f"Analisis_{nombre}_{a_pat}.jpg"
 
                     if "service_account_base64" in st.secrets:
                         try:
-                            # Decodificamos el Base64 a JSON
-                            decoded_bytes = base64.b64decode(st.secrets["service_account_base64"])
-                            info = json.loads(decoded_bytes)
+                            b64_str = st.secrets["service_account_base64"].strip()
+                            # REPARACIÓN DE PADDING: Añade '=' si faltan
+                            missing_padding = len(b64_str) % 4
+                            if missing_padding:
+                                b64_str += '=' * (4 - missing_padding)
                             
-                            # Limpieza de PEM interna
+                            decoded_bytes = base64.b64decode(b64_str)
+                            info = json.loads(decoded_bytes)
                             info["private_key"] = info["private_key"].replace("\\n", "\n")
                             
                             creds = Credentials.from_service_account_info(info, 
                                     scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
                             
-                            # Drive
                             ds = build('drive', 'v3', credentials=creds)
                             cv2.imwrite(file_name, cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR))
                             media = MediaFileUpload(file_name, mimetype='image/jpeg')
@@ -103,7 +104,6 @@ if st.button("Ejecutar Análisis Clínico"):
                             drive_id = df.get('id')
                             if os.path.exists(file_name): os.remove(file_name)
 
-                            # Sheets
                             gc = gspread.authorize(creds)
                             sh = gc.open(SHEET_NAME).sheet1
                             sh.append_row([now_str, tipo_reg, expediente, nombre, a_pat, a_mat, h*w, pix_tumor, round(porcentaje, 4), drive_id])
@@ -111,10 +111,10 @@ if st.button("Ejecutar Análisis Clínico"):
                         except Exception as e_cloud:
                             st.error(f"Error Sincronización: {e_cloud}")
 
-                    # 3. REPORTE TÉCNICO
+                    # 3. REPORTE
                     st.markdown(f"""
                     <div class="report-container">
-                        <div class="report-header">REPORTE TÉCNICO DE SEGMENTACIÓN</div>
+                        <div style="border-bottom: 2px solid #3498db; margin-bottom: 20px; padding-bottom: 10px; color: #2c3e50; font-size: 24px;">REPORTE TÉCNICO DE SEGMENTACIÓN</div>
                         <div style="background-color: #fff5f0; text-align: center; border: 1px solid #e67e22; padding: 20px; border-radius: 10px;">
                             <p style="color: #e67e22; margin:0; font-weight: bold; text-transform: uppercase;">ÁREA DE OCUPACIÓN TUMORAL</p>
                             <h1 style="color: #c23616; margin:0; font-size: 55px;">{porcentaje:.4f} %</h1>
