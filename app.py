@@ -11,11 +11,11 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# --- CONFIGURACIÓN MAESTRA (TUS DATOS) ---
+# --- CONFIGURACIÓN MAESTRA ---
 API_KEY_ROBOFLOW = "nOMi9VHi25eRhP420XFn"
 ENDPOINT_ROBOFLOW = "segmentacion-tumores-mamografia-sn1wk/5"
 
-# Tus IDs de Google (Verificados)
+# Tus IDs configurados
 SHEET_ID = "1sdmCsIJmRz84Fu26KtTrE_rTTh7SzoS5womeVctnXQ4"
 DRIVE_FOLDER_ID = "1S66F3LwaWazDogCbcU8kGJH91vKTuyHb"
 
@@ -80,14 +80,14 @@ if st.button("Ejecutar Análisis Clínico"):
                     
                     st.image(res_img, use_container_width=True)
 
-                    # 2. SINCRONIZACIÓN (CORRECCIÓN DE CUOTA)
+                    # 2. SINCRONIZACIÓN (SOLUCIÓN A ERROR DE CUOTA)
                     drive_id = "Error de Sincronización"
                     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     file_name = f"Analisis_{nombre}_{a_pat}_{expediente}.jpg"
 
                     if "service_account_base64" in st.secrets:
                         try:
-                            # Decodificación y limpieza de llave
+                            # Decodificación Base64
                             b64_str = st.secrets["service_account_base64"].strip()
                             missing_padding = len(b64_str) % 4
                             if missing_padding: b64_str += '=' * (4 - missing_padding)
@@ -98,46 +98,44 @@ if st.button("Ejecutar Análisis Clínico"):
                             creds = Credentials.from_service_account_info(info, 
                                     scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
                             
-                            # Subida a Drive (Solución al error 403 Quota)
+                            # Drive: Subida forzada a tu carpeta (Usa tu espacio)
                             ds = build('drive', 'v3', credentials=creds)
                             cv2.imwrite(file_name, cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR))
                             
                             media = MediaFileUpload(file_name, mimetype='image/jpeg')
-                            # EL SECRETO: 'parents' obliga a guardar en TU carpeta usando TU espacio
                             file_metadata = {
                                 'name': file_name,
-                                'parents': [DRIVE_FOLDER_ID]
+                                'parents': [DRIVE_FOLDER_ID] # <-- Esto soluciona el error 403 de Cuota
                             }
                             df = ds.files().create(body=file_metadata, media_body=media, fields='id').execute()
                             drive_id = df.get('id')
                             if os.path.exists(file_name): os.remove(file_name)
 
-                            # Registro en Sheets
+                            # Sheets: Registro de datos
                             gc = gspread.authorize(creds)
                             sh = gc.open_by_key(SHEET_ID).sheet1
                             sh.append_row([now_str, tipo_reg, expediente, nombre, a_pat, a_mat, h*w, pix_tumor, round(porcentaje, 4), drive_id])
-                            st.toast("✅ Base de Datos Actualizada con Éxito")
+                            st.toast("✅ Base de Datos Actualizada")
                             
                         except Exception as e_cloud:
                             st.error(f"Error Sincronización: {str(e_cloud)}")
 
-                    # 3. REPORTE VISUAL
+                    # 3. REPORTE
                     st.markdown(f"""
                     <div class="report-container">
                         <div class="report-header">REPORTE TÉCNICO DE SEGMENTACIÓN</div>
                         <div style="background-color: #fff5f0; text-align: center; border: 1px solid #e67e22; padding: 25px; border-radius: 10px;">
-                            <p style="color: #e67e22; margin:0; font-weight: bold; text-transform: uppercase; font-size: 14px;">ÁREA DE OCUPACIÓN TUMORAL</p>
+                            <p style="color: #e67e22; margin:0; font-weight: bold; text-transform: uppercase;">ÁREA DE OCUPACIÓN TUMORAL</p>
                             <h1 style="color: #c23616; margin:0; font-size: 65px;">{porcentaje:.4f} %</h1>
                         </div>
-                        <div style="color: #95a5a6; font-size: 13px; margin-top: 20px; line-height: 1.6;">
-                            <b>ESTADO:</b> Sincronizado con Historial Clínico Digital.<br>
-                            <b>ID DE IMAGEN:</b> {drive_id}<br>
-                            <b>FECHA Y HORA:</b> {now_str}
+                        <div style="color: #95a5a6; font-size: 13px; margin-top: 20px;">
+                            <b>ID Drive:</b> {drive_id}<br>
+                            <b>Fecha:</b> {now_str}
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
                 else:
-                    st.error("❌ Roboflow no detectó predicciones en la imagen.")
+                    st.error("❌ No se detectó tumor en la imagen cargada.")
             except Exception as e:
                 st.error(f"❌ Error Crítico: {e}")
 
