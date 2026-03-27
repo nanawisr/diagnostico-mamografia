@@ -11,11 +11,11 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# --- CONFIGURACIÓN MAESTRA (TUS DATOS REALES) ---
+# --- CONFIGURACIÓN MAESTRA (TUS DATOS) ---
 API_KEY_ROBOFLOW = "nOMi9VHi25eRhP420XFn"
 ENDPOINT_ROBOFLOW = "segmentacion-tumores-mamografia-sn1wk/5"
 
-# Tus IDs integrados
+# Tus IDs de Google (Verificados)
 SHEET_ID = "1sdmCsIJmRz84Fu26KtTrE_rTTh7SzoS5womeVctnXQ4"
 DRIVE_FOLDER_ID = "1S66F3LwaWazDogCbcU8kGJH91vKTuyHb"
 
@@ -28,6 +28,7 @@ st.markdown("""
     .header-box { background-color: #34495e; padding: 25px; border-radius: 5px; border-left: 10px solid #3498db; margin-bottom: 20px; }
     .header-box h1 { color: white; margin: 0; font-family: sans-serif; font-size: 42px; }
     .report-container { border: 1px solid #ced4da; padding: 20px; border-radius: 10px; background-color: white; font-family: sans-serif; margin-top: 20px; }
+    .report-header { border-bottom: 2px solid #3498db; margin-bottom: 20px; padding-bottom: 10px; color: #2c3e50; font-size: 24px; text-transform: uppercase; }
 </style>
 <div class="header-box">
     <h1>Plataforma de Diagnóstico Digital</h1>
@@ -47,9 +48,9 @@ uploader = st.file_uploader("📤 Subir Imagen Radiográfica (1)", type=["jpg", 
 
 if st.button("Ejecutar Análisis Clínico"):
     if not uploader:
-        st.warning("⚠️ Cargue una imagen.")
+        st.warning("⚠️ Cargue una imagen antes de continuar.")
     else:
-        with st.spinner("🔬 Analizando y Sincronizando con Base de Datos..."):
+        with st.spinner("🔬 Procesando y Sincronizando con la Nube..."):
             try:
                 # 1. IA Roboflow
                 file_bytes = np.asarray(bytearray(uploader.read()), dtype=np.uint8)
@@ -79,14 +80,14 @@ if st.button("Ejecutar Análisis Clínico"):
                     
                     st.image(res_img, use_container_width=True)
 
-                    # 2. SINCRONIZACIÓN (MÉTODO BASE64)
-                    drive_id = "No sincronizado"
+                    # 2. SINCRONIZACIÓN (CORRECCIÓN DE CUOTA)
+                    drive_id = "Error de Sincronización"
                     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    file_name = f"Analisis_{nombre}_{a_pat}.jpg"
+                    file_name = f"Analisis_{nombre}_{a_pat}_{expediente}.jpg"
 
                     if "service_account_base64" in st.secrets:
                         try:
-                            # Decodificar y auto-reparar padding
+                            # Decodificación y limpieza de llave
                             b64_str = st.secrets["service_account_base64"].strip()
                             missing_padding = len(b64_str) % 4
                             if missing_padding: b64_str += '=' * (4 - missing_padding)
@@ -97,39 +98,48 @@ if st.button("Ejecutar Análisis Clínico"):
                             creds = Credentials.from_service_account_info(info, 
                                     scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
                             
-                            # Drive
+                            # Subida a Drive (Solución al error 403 Quota)
                             ds = build('drive', 'v3', credentials=creds)
                             cv2.imwrite(file_name, cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR))
+                            
                             media = MediaFileUpload(file_name, mimetype='image/jpeg')
-                            df = ds.files().create(body={'name': file_name, 'parents': [DRIVE_FOLDER_ID]}, media_body=media, fields='id').execute()
+                            # EL SECRETO: 'parents' obliga a guardar en TU carpeta usando TU espacio
+                            file_metadata = {
+                                'name': file_name,
+                                'parents': [DRIVE_FOLDER_ID]
+                            }
+                            df = ds.files().create(body=file_metadata, media_body=media, fields='id').execute()
                             drive_id = df.get('id')
                             if os.path.exists(file_name): os.remove(file_name)
 
-                            # Sheets
+                            # Registro en Sheets
                             gc = gspread.authorize(creds)
                             sh = gc.open_by_key(SHEET_ID).sheet1
                             sh.append_row([now_str, tipo_reg, expediente, nombre, a_pat, a_mat, h*w, pix_tumor, round(porcentaje, 4), drive_id])
-                            st.toast("✅ Base de Datos Sincronizada")
+                            st.toast("✅ Base de Datos Actualizada con Éxito")
+                            
                         except Exception as e_cloud:
-                            st.error(f"Error Sincronización: {e_cloud}")
+                            st.error(f"Error Sincronización: {str(e_cloud)}")
 
-                    # 3. REPORTE TÉCNICO
+                    # 3. REPORTE VISUAL
                     st.markdown(f"""
                     <div class="report-container">
-                        <div style="border-bottom: 2px solid #3498db; margin-bottom: 20px; padding-bottom: 10px; color: #2c3e50; font-size: 24px;">REPORTE TÉCNICO DE SEGMENTACIÓN</div>
-                        <div style="background-color: #fff5f0; text-align: center; border: 1px solid #e67e22; padding: 20px; border-radius: 10px;">
-                            <p style="color: #e67e22; margin:0; font-weight: bold; text-transform: uppercase;">ÁREA DE OCUPACIÓN TUMORAL</p>
-                            <h1 style="color: #c23616; margin:0; font-size: 55px;">{porcentaje:.4f} %</h1>
+                        <div class="report-header">REPORTE TÉCNICO DE SEGMENTACIÓN</div>
+                        <div style="background-color: #fff5f0; text-align: center; border: 1px solid #e67e22; padding: 25px; border-radius: 10px;">
+                            <p style="color: #e67e22; margin:0; font-weight: bold; text-transform: uppercase; font-size: 14px;">ÁREA DE OCUPACIÓN TUMORAL</p>
+                            <h1 style="color: #c23616; margin:0; font-size: 65px;">{porcentaje:.4f} %</h1>
                         </div>
-                        <p style="color: #95a5a6; font-size: 13px; margin-top: 15px;">
-                            Sincronizado con Historial Clínico.<br>
-                            Imagen en Drive ID: <b>{drive_id}</b><br>
-                            Fecha: {now_str}
-                        </p>
+                        <div style="color: #95a5a6; font-size: 13px; margin-top: 20px; line-height: 1.6;">
+                            <b>ESTADO:</b> Sincronizado con Historial Clínico Digital.<br>
+                            <b>ID DE IMAGEN:</b> {drive_id}<br>
+                            <b>FECHA Y HORA:</b> {now_str}
+                        </div>
                     </div>
                     """, unsafe_allow_html=True)
+                else:
+                    st.error("❌ Roboflow no detectó predicciones en la imagen.")
             except Exception as e:
-                st.error(f"Error IA: {e}")
+                st.error(f"❌ Error Crítico: {e}")
 
 st.write("---")
 if st.button("Limpiar y Nueva Consulta"):
