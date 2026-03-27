@@ -15,7 +15,7 @@ from googleapiclient.http import MediaFileUpload
 API_KEY_ROBOFLOW = "nOMi9VHi25eRhP420XFn"
 ENDPOINT_ROBOFLOW = "segmentacion-tumores-mamografia-sn1wk/5"
 
-# Tus IDs (Verificados)
+# Tus IDs (Verificados para la carpeta 'base_datos_pacientes')
 SHEET_ID = "1sdmCsIJmRz84Fu26KtTrE_rTTh7SzoS5womeVctnXQ4"
 DRIVE_FOLDER_ID = "1S66F3LwaWazDogCbcU8kGJH91vKTuyHb"
 MI_CORREO = "nana.wowrara@gmail.com"
@@ -25,10 +25,10 @@ st.set_page_config(page_title="Plataforma de Diagnóstico Digital", layout="wide
 
 st.markdown("""
 <style>
-    .stButton > button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; background-color: #1e88e5 !important; color: white !important; }
+    .stButton > button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; background-color: #1e88e5 !important; color: white !important; border: none; }
     .header-box { background-color: #34495e; padding: 25px; border-radius: 5px; border-left: 10px solid #3498db; margin-bottom: 20px; }
     .header-box h1 { color: white; margin: 0; font-family: sans-serif; font-size: 42px; }
-    .report-container { border: 1px solid #ced4da; padding: 20px; border-radius: 10px; background-color: white; margin-top: 20px; }
+    .report-container { border: 1px solid #ced4da; padding: 20px; border-radius: 10px; background-color: white; font-family: sans-serif; margin-top: 20px; }
     .report-header { border-bottom: 2px solid #3498db; margin-bottom: 15px; padding-bottom: 10px; color: #2c3e50; font-size: 24px; text-transform: uppercase; }
 </style>
 <div class="header-box">
@@ -72,8 +72,10 @@ if st.button("Ejecutar Análisis Clínico"):
                         pts = np.array([(int(pt['x']), int(pt['y'])) for pt in p['points']], np.int32)
                         cv2.fillPoly(mask, [pts], 255)
                     
-                    pix_tumor = int(np.count_nonzero(mask)) # CORRECCIÓN: Convertir a int nativo
-                    porcentaje = float((pix_tumor / (h * w)) * 100) # CORRECCIÓN: Convertir a float nativo
+                    # CORRECCIÓN DE TIPOS (Evita error int64)
+                    pix_tumor = int(np.count_nonzero(mask))
+                    porcentaje = float((pix_tumor / (h * w)) * 100)
+                    
                     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                     overlay = img_rgb.copy()
                     overlay[mask > 0] = [255, 0, 0]
@@ -95,21 +97,34 @@ if st.button("Ejecutar Análisis Clínico"):
                             info["private_key"] = info["private_key"].replace("\\n", "\n")
                             creds = Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
                             
-                            # Drive
+                            # DRIVE: Subida forzada a la carpeta compartida
                             try:
                                 ds = build('drive', 'v3', credentials=creds)
                                 cv2.imwrite(file_name, cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR))
                                 media = MediaFileUpload(file_name, mimetype='image/jpeg', resumable=True)
-                                df = ds.files().create(body={'name': file_name, 'parents': [DRIVE_FOLDER_ID]}, media_body=media, fields='id', supportsAllDrives=True).execute()
+                                
+                                df = ds.files().create(
+                                    body={'name': file_name, 'parents': [DRIVE_FOLDER_ID]}, 
+                                    media_body=media, 
+                                    fields='id', 
+                                    supportsAllDrives=True
+                                ).execute()
+                                
                                 drive_id = df.get('id')
-                                ds.permissions().create(fileId=drive_id, body={'type': 'user', 'role': 'writer', 'emailAddress': MI_CORREO}).execute()
+                                
+                                # Compartir contigo para evitar bloqueo de cuota
+                                ds.permissions().create(
+                                    fileId=drive_id, 
+                                    body={'type': 'user', 'role': 'writer', 'emailAddress': MI_CORREO}
+                                ).execute()
+                                
                                 if os.path.exists(file_name): os.remove(file_name)
-                            except: pass
+                            except Exception as ed:
+                                drive_id = f"Error Drive: {str(ed)[:30]}"
 
-                            # Sheets (CON CONVERSIÓN DE TIPOS DE DATOS)
+                            # SHEETS: Registro de datos
                             gc = gspread.authorize(creds)
                             sh = gc.open_by_key(SHEET_ID).sheet1
-                            # Usamos str() o tipos nativos para evitar el error int64
                             sh.append_row([
                                 now_str, 
                                 str(tipo_reg), 
@@ -123,10 +138,10 @@ if st.button("Ejecutar Análisis Clínico"):
                                 str(drive_id)
                             ])
                             st.toast("✅ Base de Datos Sincronizada")
-                        except Exception as e:
-                            st.error(f"Error Sincronización: {e}")
+                        except Exception as e_sinc:
+                            st.error(f"Error Sincronización: {e_sinc}")
 
-                    # 3. REPORTE
+                    # 3. REPORTE VISUAL
                     st.markdown(f"""
                     <div class="report-container">
                         <div class="report-header">REPORTE TÉCNICO DE SEGMENTACIÓN</div>
@@ -135,8 +150,8 @@ if st.button("Ejecutar Análisis Clínico"):
                             <h1 style="color: #c23616; margin:0; font-size: 65px;">{porcentaje:.4f} %</h1>
                         </div>
                         <div style="color: #95a5a6; font-size: 13px; margin-top: 20px;">
-                            <b>ID Drive:</b> {drive_id}<br>
-                            <b>Fecha:</b> {now_str}
+                            <b>ID DRIVE:</b> {drive_id}<br>
+                            <b>FECHA:</b> {now_str}
                         </div>
                     </div>
                     """, unsafe_allow_html=True)
@@ -145,5 +160,5 @@ if st.button("Ejecutar Análisis Clínico"):
             except Exception as e:
                 st.error(f"Error Crítico: {e}")
 
-if st.button("Nueva Consulta"):
+if st.button("Limpiar y Nueva Consulta"):
     st.rerun()
