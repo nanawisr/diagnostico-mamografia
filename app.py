@@ -3,11 +3,9 @@ import cv2
 import numpy as np
 import requests
 import base64
-import os
 
-# --- DATOS DE CONEXIÓN DIRECTA ---
+# --- DATOS DE CONEXIÓN ---
 API_KEY = "nOMi9VHi25eRhP420XFn"
-# Usamos la Versión 5 que es la que confirmamos que tiene el entrenamiento listo
 ENDPOINT = "segmentacion-tumores-mamografia-sn1wk/5"
 
 # --- INTERFAZ ---
@@ -41,26 +39,29 @@ if ejecutar:
     if not uploader:
         st.warning("⚠️ Por favor, cargue una imagen.")
     else:
-        with st.spinner("🔬 Conectando con el Servidor de IA..."):
+        with st.spinner("🔬 Analizando tejido..."):
             try:
                 # 1. Leer imagen
                 file_bytes = np.asarray(bytearray(uploader.read()), dtype=np.uint8)
                 img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
                 h, w, _ = img.shape
                 
-                # 2. Convertir a Base64 (Método infalible para APIs)
+                # 2. Convertir a Base64
                 _, buffer = cv2.imencode('.jpg', img)
                 img_base64 = base64.b64encode(buffer).decode('utf-8')
                 
-                # 3. Petición Directa a Roboflow (Saltándonos librerías que fallan)
+                # 3. Petición Directa con el Header que nos faltaba
                 url = f"https://outline.roboflow.com/{ENDPOINT}"
                 params = {"api_key": API_KEY, "confidence": "40"}
                 
-                response = requests.post(url, params=params, data=img_base64)
+                # Agregamos el Content-Type para que Roboflow no se queje
+                headers = {"Content-Type": "application/x-www-form-urlencoded"}
+                
+                response = requests.post(url, params=params, data=img_base64, headers=headers)
                 prediction = response.json()
                 
                 if "predictions" not in prediction:
-                    st.error(f"Error de Respuesta: {prediction.get('message', 'Servidor no disponible')}")
+                    st.error(f"Error: {prediction.get('message', 'Error en respuesta')}")
                 else:
                     preds = [p for p in prediction['predictions'] if p.get('class') == 'tumor']
                     
@@ -68,7 +69,7 @@ if ejecutar:
                     
                     if not preds:
                         st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-                        st.success("✅ Análisis Finalizado: No se detectaron hallazgos tumorales.")
+                        st.success("✅ Análisis Finalizado: Sin hallazgos tumorales.")
                     else:
                         mask = np.zeros((h, w), dtype=np.uint8)
                         for p in preds:
@@ -80,13 +81,12 @@ if ejecutar:
                         
                         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                         overlay = img_rgb.copy()
-                        overlay[mask > 0] = [255, 0, 0] # Color rojo
+                        overlay[mask > 0] = [255, 0, 0]
                         st.image(cv2.addWeighted(img_rgb, 0.7, overlay, 0.3, 0), use_container_width=True)
 
-                        # REPORTE TÉCNICO
                         st.markdown(f"""
                         <div style="border: 2px solid #3498db; padding: 20px; border-radius: 10px; background-color: #f8f9fa;">
-                            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; margin-top: 0;">REPORTE TÉCNICO DE SEGMENTACIÓN</h2>
+                            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; margin-top: 0;">REPORTE TÉCNICO</h2>
                             <div style="background-color: #fdf2e9; text-align: center; border: 1px solid #e67e22; padding: 15px; border-radius: 5px; margin-top: 15px;">
                                 <p style="color: #e67e22; margin:0; font-weight: bold;">ÁREA DE OCUPACIÓN TUMORAL</p>
                                 <h1 style="color: #c23616; margin:0; font-size: 45px;">{porcentaje:.4f} %</h1>
@@ -95,7 +95,7 @@ if ejecutar:
                         """, unsafe_allow_html=True)
 
             except Exception as e:
-                st.error(f"❌ Error en el proceso: {str(e)}")
+                st.error(f"❌ Error: {str(e)}")
 
 st.write("---")
 if st.button("Nueva Consulta"):
