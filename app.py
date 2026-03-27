@@ -14,9 +14,14 @@ ENDPOINT_ROBOFLOW = "segmentacion-tumores-mamografia-sn1wk/5"
 API_KEY_IMGBB = "46f55aca9d7c7d9c64f532e4203a789c"
 SHEET_ID = "1sdmCsIJmRz84Fu26KtTrE_rTTh7SzoS5womeVctnXQ4"
 
-# --- INTERFAZ ---
+# --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Plataforma de Diagnóstico Digital", layout="wide")
 
+# Inicializar estado para controlar la visualización
+if 'analizado' not in st.session_state:
+    st.session_state.analizado = False
+
+# --- ESTILOS CSS ---
 st.markdown("""
 <style>
     .stButton > button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; background-color: #1e88e5 !important; color: white !important; border: none; }
@@ -25,7 +30,7 @@ st.markdown("""
     .instruction-text { color: #576574; font-size: 16px; margin-bottom: 20px; font-style: italic; }
     .report-container { border: 1px solid #ced4da; padding: 20px; border-radius: 10px; background-color: white; font-family: sans-serif; margin-top: 20px; }
     .report-header { border-bottom: 2px solid #3498db; margin-bottom: 20px; padding-bottom: 10px; color: #2c3e50; font-size: 24px; text-transform: uppercase; }
-    .data-label { color: #95a5a6; font-size: 12px; text-transform: uppercase; margin-bottom: 2px; }
+    .data-label { color: #95a5a6; font-size: 12px; text-transform: uppercase; margin-bottom: 2px; font-weight: bold; }
     .data-value { color: #2c3e50; font-weight: bold; font-size: 18px; margin-bottom: 15px; }
     .pixel-value { color: #c0392b; font-weight: bold; font-size: 18px; }
 </style>
@@ -33,15 +38,14 @@ st.markdown("""
     <h1>Plataforma de Diagnóstico Digital</h1>
     <p style="color: #bdc3c7; margin: 5px 0 0 0; font-size: 18px; text-transform: uppercase;">MÓDULO DE ANÁLISIS CLÍNICO AVANZADO</p>
 </div>
-<p class="instruction-text">Por favor, rellene los datos solicitados e inserte la mamografía para su análisis.</p>
 """, unsafe_allow_html=True)
 
-# Inicializar estado para controlar la visualización del reporte
-if 'analizado' not in st.session_state:
-    st.session_state.analizado = False
-
-# Formulario
+# Lógica de visualización condicional
 if not st.session_state.analizado:
+    # Mostrar indicación SOLO antes del resultado
+    st.markdown('<p class="instruction-text">Por favor, rellene los datos solicitados e inserte la mamografía para su análisis.</p>', unsafe_allow_html=True)
+    
+    # Formulario
     c1, c2 = st.columns([1, 2])
     tipo_reg = c1.selectbox("Registro:", ["Nuevo", "Existente"])
     expediente = c2.text_input("Expediente:", value="00478119")
@@ -103,7 +107,7 @@ if not st.session_state.analizado:
                             sh = gc.open_by_key(SHEET_ID).sheet1
                             sh.append_row([now_str, str(tipo_reg), str(expediente), str(nombre), str(a_pat), str(a_mat), int(h*w), pix_tumor, round(porcentaje, 4), url_imagen])
 
-                        # Guardar datos en session_state para mostrar el reporte
+                        # Guardar datos en session_state
                         st.session_state.res_img = res_img
                         st.session_state.datos = {
                             "paciente": f"{nombre} {a_pat} {a_mat}",
@@ -119,8 +123,9 @@ if not st.session_state.analizado:
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-# Mostrar resultados si ya se analizó
+# --- SECCIÓN DE RESULTADOS ---
 if st.session_state.analizado:
+    # La imagen analizada
     st.image(st.session_state.res_img, use_container_width=True)
     
     d = st.session_state.datos
