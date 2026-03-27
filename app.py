@@ -15,10 +15,10 @@ API_KEY_ROBOFLOW = "nOMi9VHi25eRhP420XFn"
 ENDPOINT_ROBOFLOW = "segmentacion-tumores-mamografia-sn1wk/5"
 SHEET_NAME = "Base_Datos_Pacientes"
 
-# --- CONFIGURACIÓN DE PÁGINA (ANCHO TOTAL) ---
+# --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Plataforma de Diagnóstico Digital", layout="wide")
 
-# --- ESTILOS CSS (Tu interfaz exacta) ---
+# --- ESTILOS CSS ---
 st.markdown("""
 <style>
     .stButton > button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; }
@@ -75,7 +75,6 @@ if ejecutar:
                 _, buffer = cv2.imencode('.jpg', img)
                 img_64 = base64.b64encode(buffer).decode('utf-8')
                 
-                # Inferencia Directa a Roboflow
                 url_rf = f"https://outline.roboflow.com/{ENDPOINT_ROBOFLOW}"
                 params = {"api_key": API_KEY_ROBOFLOW, "confidence": "40"}
                 headers = {"Content-Type": "application/x-www-form-urlencoded"}
@@ -93,13 +92,11 @@ if ejecutar:
                     pix_tumor = np.count_nonzero(mask)
                     porcentaje = (pix_tumor / pix_totales) * 100
                     
-                    # Generar Imagen con Overlay Rojo
                     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                     overlay = img_rgb.copy()
                     overlay[mask > 0] = [255, 0, 0]
                     res_img = cv2.addWeighted(img_rgb, 0.7, overlay, 0.3, 0)
                     
-                    # MOSTRAR IMAGEN EN PANTALLA
                     st.write(f"### Análisis de Imagen - {nombre} {a_pat} {a_mat}")
                     st.image(res_img, use_container_width=True)
 
@@ -107,18 +104,18 @@ if ejecutar:
                     file_name = f"Analisis_{nombre}_{a_pat}_{expediente}.jpg"
                     drive_id = "No sincronizado"
 
-                    # 2. INTENTO DE SINCRONIZACIÓN CON GOOGLE (DRIVE Y SHEETS)
+                    # 2. SINCRONIZACIÓN CON GOOGLE
                     try:
                         if "google_drive_credentials" in st.secrets:
-                            try:
-                                # Extraemos las credenciales 
-                                creds_dict = dict(st.secrets["google_drive_credentials"])
-                                # CORRECCIÓN CRÍTICA: Aseguramos que los saltos de línea sean correctos
-                                if "private_key" in creds_dict:
-                                    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-                                creds = Credentials.from_service_account_info(creds_dict,
-                                        scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
-                            ])
+                            # CORRECCIÓN AQUÍ: Limpieza de la estructura de diccionarios
+                            creds_dict = dict(st.secrets["google_drive_credentials"])
+                            if "private_key" in creds_dict:
+                                creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+                            
+                            creds = Credentials.from_service_account_info(
+                                creds_dict,
+                                scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+                            )
                             
                             # Subir a Google Drive
                             ds = build('drive', 'v3', credentials=creds)
@@ -128,7 +125,7 @@ if ejecutar:
                             drive_id = df.get('id')
                             if os.path.exists(file_name): os.remove(file_name)
 
-                            # Registrar en Google Sheets (Orden exacto de tus columnas)
+                            # Registrar en Google Sheets
                             gc = gspread.authorize(creds)
                             sh = gc.open(SHEET_NAME).sheet1
                             sh.append_row([
@@ -141,7 +138,7 @@ if ejecutar:
                     except Exception as e_cloud:
                         st.error(f"Error de Sincronización: {str(e_cloud)}")
 
-                    # 3. REPORTE TÉCNICO FINAL EN PANTALLA
+                    # 3. REPORTE TÉCNICO
                     st.markdown(f"""
                     <div class="report-container">
                         <div class="report-header">REPORTE TÉCNICO DE SEGMENTACIÓN</div>
@@ -170,7 +167,7 @@ if ejecutar:
             except Exception as e:
                 st.error(f"❌ Error Crítico: {str(e)}")
 
-# --- BOTÓN NUEVA CONSULTA (Aparece siempre al final) ---
+# --- BOTÓN NUEVA CONSULTA ---
 st.write("---")
 st.markdown('<div class="btn-nueva">', unsafe_allow_html=True)
 if st.button("Limpiar y Nueva Consulta"):
