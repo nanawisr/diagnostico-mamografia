@@ -11,24 +11,26 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURACIÓN MAESTRA ---
 API_KEY_ROBOFLOW = "nOMi9VHi25eRhP420XFn"
 ENDPOINT_ROBOFLOW = "segmentacion-tumores-mamografia-sn1wk/5"
 SHEET_NAME = "Base_Datos_Pacientes"
 
 st.set_page_config(page_title="Plataforma de Diagnóstico Digital", layout="wide")
 
-# --- ESTILOS ---
+# --- ESTILOS CSS ---
 st.markdown("""
 <style>
-    .stButton > button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; background-color: #1e88e5 !important; color: white !important; }
+    .stButton > button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; background-color: #1e88e5 !important; color: white !important; border: none; }
     .header-box { background-color: #34495e; padding: 25px; border-radius: 5px; border-left: 10px solid #3498db; margin-bottom: 20px; }
-    .header-box h1 { color: white; margin: 0; font-family: sans-serif; }
-    .report-container { border: 1px solid #ced4da; padding: 20px; border-radius: 10px; background-color: white; margin-top: 20px; }
+    .header-box h1 { color: white; margin: 0; font-family: sans-serif; font-size: 42px; }
+    .header-box p { color: #bdc3c7; margin: 5px 0 0 0; font-size: 18px; text-transform: uppercase; }
+    .report-container { border: 1px solid #ced4da; padding: 20px; border-radius: 10px; background-color: white; font-family: sans-serif; margin-top: 20px; }
+    .report-header { border-bottom: 2px solid #3498db; margin-bottom: 20px; padding-bottom: 10px; color: #2c3e50; font-size: 24px; text-transform: uppercase; }
 </style>
 <div class="header-box">
     <h1>Plataforma de Diagnóstico Digital</h1>
-    <p style="color: #bdc3c7;">MÓDULO DE ANÁLISIS CLÍNICO AVANZADO</p>
+    <p>MÓDULO DE ANÁLISIS CLÍNICO AVANZADO</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -44,7 +46,7 @@ uploader = st.file_uploader("📤 Subir Imagen Radiográfica (1)", type=["jpg", 
 
 if st.button("Ejecutar Análisis Clínico"):
     if not uploader:
-        st.warning("⚠️ Por favor, cargue una imagen.")
+        st.warning("⚠️ Cargue una imagen.")
     else:
         with st.spinner("🔬 Procesando y Sincronizando..."):
             try:
@@ -76,18 +78,19 @@ if st.button("Ejecutar Análisis Clínico"):
                     
                     st.image(res_img, use_container_width=True)
 
-                    # 2. SINCRONIZACIÓN (Con reparación de PEM)
+                    # 2. SINCRONIZACIÓN (MÉTODO BASE64 - ANTIBALAS)
                     drive_id = "No sincronizado"
                     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     file_name = f"Analisis_{nombre}_{a_pat}.jpg"
 
-                    if "service_account_json" in st.secrets:
+                    if "service_account_base64" in st.secrets:
                         try:
-                            # Cargar JSON y reparar la llave
-                            info = json.loads(st.secrets["service_account_json"])
-                            # REPARACIÓN DE LLAVE: Esto quita errores de padding y saltos de línea
-                            fixed_key = info["private_key"].replace("\\n", "\n").strip()
-                            info["private_key"] = fixed_key
+                            # Decodificamos el Base64 a JSON
+                            decoded_bytes = base64.b64decode(st.secrets["service_account_base64"])
+                            info = json.loads(decoded_bytes)
+                            
+                            # Limpieza de PEM interna
+                            info["private_key"] = info["private_key"].replace("\\n", "\n")
                             
                             creds = Credentials.from_service_account_info(info, 
                                     scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
@@ -104,24 +107,25 @@ if st.button("Ejecutar Análisis Clínico"):
                             gc = gspread.authorize(creds)
                             sh = gc.open(SHEET_NAME).sheet1
                             sh.append_row([now_str, tipo_reg, expediente, nombre, a_pat, a_mat, h*w, pix_tumor, round(porcentaje, 4), drive_id])
+                            st.toast("✅ Base de Datos Sincronizada")
                         except Exception as e_cloud:
                             st.error(f"Error Sincronización: {e_cloud}")
 
-                    # 3. REPORTE
+                    # 3. REPORTE TÉCNICO
                     st.markdown(f"""
                     <div class="report-container">
-                        <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db;">REPORTE TÉCNICO</h2>
-                        <div style="background-color: #fff5f0; text-align: center; padding: 20px; border-radius: 10px; border: 1px solid #e67e22;">
-                            <p style="color: #e67e22; font-weight: bold; margin:0;">ÁREA DE OCUPACIÓN TUMORAL</p>
-                            <h1 style="color: #c23616; font-size: 50px; margin:0;">{porcentaje:.4f} %</h1>
+                        <div class="report-header">REPORTE TÉCNICO DE SEGMENTACIÓN</div>
+                        <div style="background-color: #fff5f0; text-align: center; border: 1px solid #e67e22; padding: 20px; border-radius: 10px;">
+                            <p style="color: #e67e22; margin:0; font-weight: bold; text-transform: uppercase;">ÁREA DE OCUPACIÓN TUMORAL</p>
+                            <h1 style="color: #c23616; margin:0; font-size: 55px;">{porcentaje:.4f} %</h1>
                         </div>
-                        <p style="color: #95a5a6; font-size: 12px; margin-top: 15px;">
+                        <p style="color: #95a5a6; font-size: 13px; margin-top: 15px;">
                             Sincronizado con Historial Clínico.<br>
-                            ID Drive: {drive_id} | Fecha: {now_str}
+                            Imagen en Drive ID: <b>{drive_id}</b><br>
+                            Fecha: {now_str}
                         </p>
                     </div>
                     """, unsafe_allow_html=True)
-
             except Exception as e:
                 st.error(f"Error: {e}")
 
