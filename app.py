@@ -7,24 +7,27 @@ import os
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- CONFIGURACIÓN CON TU NUEVA LLAVE ---
-API_KEY = "rf_h8FmtmuaWPRTk6SZn8Y0IK1JUcu1"
-WORKSPACE = "diseo-de-proyectos"
-PROJECT_ID = "segmentacion-tumores-mamografia-sn1wk"
-VERSION = 6 
+# --- CONFIGURACIÓN MAESTRA (Con la Private Key correcta) ---
+API_KEY_PRIVATE = "nOMi9VHi25eRhP420XFn" 
+WORKSPACE_ID = "diseo-de-proyectos"
+PROJECT_NAME = "segmentacion-tumores-mamografia-sn1wk"
+VERSION_NUM = 6 
 SPREADSHEET_NAME = "Base_Datos_Pacientes"
 
-# --- FUNCIONES DE CONEXIÓN ---
+# --- FUNCIÓN DE CARGA DEL MODELO (CON CACHÉ) ---
 @st.cache_resource
-def cargar_modelo():
+def cargar_modelo_biomedico():
     try:
-        rf = Roboflow(api_key=API_KEY)
-        project = rf.workspace(WORKSPACE).project(PROJECT_ID)
-        return project.version(VERSION).model
+        # Usamos la Private Key para que el servidor de Roboflow nos dé acceso total
+        rf = Roboflow(api_key=API_KEY_PRIVATE)
+        project = rf.workspace(WORKSPACE_ID).project(PROJECT_NAME)
+        model = project.version(VERSION_NUM).model
+        return model
     except Exception as e:
-        st.sidebar.error(f"Error de Roboflow: {e}")
+        st.sidebar.error(f"Error de autenticación Roboflow: {e}")
         return None
 
+# --- CONEXIÓN A GOOGLE SHEETS ---
 def conectar_google():
     try:
         creds_dict = st.secrets["google_drive_credentials"]
@@ -36,7 +39,7 @@ def conectar_google():
     except:
         return None
 
-# --- INTERFAZ (Tu diseño original) ---
+# --- INTERFAZ VISUAL (Tu diseño original) ---
 st.set_page_config(page_title="Plataforma de Diagnóstico Digital", layout="wide")
 
 st.markdown("""
@@ -54,14 +57,15 @@ st.markdown("""
 
 st.info("**Gestión Hospitalaria:** Ingrese la filiación completa de la paciente y cargue el estudio para su procesamiento y registro.")
 
+# Formulario de Registro
 c1, c2 = st.columns([1, 2])
-tipo_registro = c1.selectbox("Registro:", ["Nuevo", "Existente"], key="reg_tipo")
+tipo_reg = c1.selectbox("Registro:", ["Nuevo", "Existente"], key="reg_tipo")
 expediente = c2.text_input("Expediente:", value="00478119")
 
 c3, c4, c5 = st.columns(3)
 nombre = c3.text_input("Nombre(s):", value="Ana")
-a_paterno = c4.text_input("A. Paterno:", value="Reyes")
-a_materno = c5.text_input("A. Materno:", value="Morales")
+a_pat = c4.text_input("A. Paterno:", value="Reyes")
+a_mat = c5.text_input("A. Materno:", value="Morales")
 
 uploader = st.file_uploader("📤 Subir Imagen (1)", type=["jpg", "png", "jpeg"])
 
@@ -69,32 +73,37 @@ st.markdown('<div class="btn-ejecutar">', unsafe_allow_html=True)
 ejecutar = st.button("Ejecutar Análisis Clínico")
 st.markdown('</div>', unsafe_allow_html=True)
 
+# --- PROCESAMIENTO ---
 if ejecutar:
     if not uploader:
-        st.error("❌ Por favor, cargue una imagen.")
+        st.error("❌ Por favor, cargue una imagen antes de ejecutar.")
     else:
-        model = cargar_modelo()
+        # Cargamos el modelo (aquí ya no debería fallar con la Private Key)
+        model = cargar_modelo_biomedico()
+        
         if model is None:
-            st.error("❌ Error de conexión. Verifique los logs en Streamlit.")
+            st.error("❌ Error: No se pudo conectar con el motor de IA. Verifique la API Key.")
         else:
-            with st.spinner("🔬 Procesando análisis..."):
-                file_bytes = np.asarray(bytearray(uploader.read()), dtype=np.uint8)
-                img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-                h, w, _ = img.shape
-                cv2.imwrite("temp.jpg", img)
-
+            with st.spinner("🔬 Realizando segmentación digital..."):
                 try:
-                    prediction = model.predict("temp.jpg", confidence=40).json()
+                    # Preparar imagen
+                    file_bytes = np.asarray(bytearray(uploader.read()), dtype=np.uint8)
+                    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+                    h, w, _ = img.shape
+                    cv2.imwrite("temp_analisis.jpg", img)
+
+                    # Inferencia
+                    prediction = model.predict("temp_analisis.jpg", confidence=40).json()
                     preds = [p for p in prediction['predictions'] if p.get('class') == 'tumor']
                     
-                    st.subheader(f"Resultados de Análisis - {nombre} {a_paterno} {a_materno}")
+                    st.subheader(f"Resultados de Análisis - {nombre} {a_pat} {a_mat}")
                     
                     mask = np.zeros((h, w), dtype=np.uint8)
                     tumor_px, porcentaje = 0, 0.0
 
                     if not preds:
                         st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), use_container_width=True)
-                        st.success("✅ Análisis finalizado: Sin hallazgos tumorales detectados.")
+                        st.success("✅ Análisis finalizado: No se detectaron hallazgos tumorales.")
                     else:
                         for p in preds:
                             pts = np.array([(int(pt['x']), int(pt['y'])) for pt in p['points']], np.int32)
@@ -103,17 +112,18 @@ if ejecutar:
                         tumor_px = np.count_nonzero(mask)
                         porcentaje = (tumor_px / (h * w)) * 100
                         
+                        # Imagen con Overlay
                         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                         overlay = img_rgb.copy()
                         overlay[mask > 0] = [255, 0, 0]
                         st.image(cv2.addWeighted(img_rgb, 0.7, overlay, 0.3, 0), use_container_width=True)
 
-                        # REPORTE TÉCNICO
+                        # REPORTE TÉCNICO (Tu diseño de cuadro naranja)
                         st.markdown(f"""
                         <div style="border: 2px solid #3498db; padding: 20px; border-radius: 10px; background-color: #f8f9fa;">
                             <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; margin-top: 0;">REPORTE TÉCNICO DE SEGMENTACIÓN</h2>
                             <div style="display: flex; justify-content: space-between; margin-bottom: 20px;">
-                                <div><p style="color: #7f8c8d; margin:0;">PACIENTE</p><b>{nombre} {a_paterno} {a_materno}</b></div>
+                                <div><p style="color: #7f8c8d; margin:0;">PACIENTE</p><b>{nombre} {a_pat} {a_mat}</b></div>
                                 <div><p style="color: #7f8c8d; margin:0;">EXPEDIENTE</p><b>{expediente}</b></div>
                             </div>
                             <div style="background-color: #fdf2e9; text-align: center; border: 1px solid #e67e22; padding: 15px; border-radius: 5px;">
@@ -123,14 +133,22 @@ if ejecutar:
                         </div>
                         """, unsafe_allow_html=True)
 
+                    # Guardar en Google Sheets
                     gc = conectar_google()
                     if gc:
                         sh = gc.open(SPREADSHEET_NAME).sheet1
-                        sh.append_row([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), tipo_registro, expediente, nombre, a_paterno, a_materno, h*w, tumor_px, round(porcentaje, 4)])
-                        st.toast("✅ Sincronizado correctamente.")
+                        sh.append_row([
+                            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
+                            tipo_reg, expediente, nombre, a_pat, a_mat, 
+                            h*w, tumor_px, round(porcentaje, 4)
+                        ])
+                        st.toast("✅ Sincronizado con Historial Clínico.")
 
                 except Exception as e:
                     st.error(f"Error técnico: {e}")
+                finally:
+                    if os.path.exists("temp_analisis.jpg"):
+                        os.remove("temp_analisis.jpg")
 
 st.write("---")
 st.markdown('<div class="btn-nueva">', unsafe_allow_html=True)
