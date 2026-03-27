@@ -167,4 +167,3 @@ if st.session_state.analizado and st.session_state.datos_reporte:
         st.rerun()
 
 st.write("---")
-    
