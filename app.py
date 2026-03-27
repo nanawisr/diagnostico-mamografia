@@ -10,13 +10,13 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURACIÓN MAESTRA ---
 API_KEY = "nOMi9VHi25eRhP420XFn"
 ENDPOINT = "segmentacion-tumores-mamografia-sn1wk/5"
-SPREADSHEET_NAME = "Base_Datos_Pacientes" 
-DRIVE_FOLDER_ID = "TU_ID_DE_CARPETA_DRIVE" # Reemplaza con el ID de tu carpeta de Drive
+SHEET_NAME = "Base_Datos_Pacientes"
+PARENT_FOLDER_NAME = "Pacientes_Mamografia"
 
-# --- CONEXIÓN A GOOGLE (Saca las credenciales de st.secrets) ---
+# --- CONEXIÓN A GOOGLE ---
 def conectar_google():
     try:
         creds_info = st.secrets["google_drive_credentials"]
@@ -26,24 +26,20 @@ def conectar_google():
         ])
         return creds
     except Exception as e:
-        st.error(f"Error de credenciales: {e}")
+        st.error(f"Error de credenciales en Secrets: {e}")
         return None
 
-def subir_a_drive(creds, img_array, nombre_archivo):
-    try:
-        service = build('drive', 'v3', credentials=creds)
-        # Guardar imagen temporalmente para subirla
-        temp_path = "temp_upload.jpg"
-        cv2.imwrite(temp_path, cv2.cvtColor(img_array, cv2.COLOR_RGB2BGR))
-        
-        file_metadata = {'name': nombre_archivo, 'parents': [DRIVE_FOLDER_ID]}
-        media = MediaFileUpload(temp_path, mimetype='image/jpeg')
-        file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        
-        if os.path.exists(temp_path): os.remove(temp_path)
-        return file.get('id')
-    except:
-        return "Error_Drive"
+def buscar_o_crear_carpeta(service, nombre, parent_id=None):
+    query = f"name = '{nombre}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    if parent_id: query += f" and '{parent_id}' in parents"
+    results = service.files().list(q=query, fields="files(id)").execute()
+    files = results.get('files', [])
+    if files: return files[0]['id']
+    # Si no existe, la crea
+    meta = {'name': nombre, 'mimeType': 'application/vnd.google-apps.folder'}
+    if parent_id: meta['parents'] = [parent_id]
+    file = service.files().create(body=meta, fields='id').execute()
+    return file.get('id')
 
 # --- INTERFAZ VISUAL ---
 st.set_page_config(page_title="Plataforma de Diagnóstico Digital", layout="wide")
@@ -57,15 +53,12 @@ st.markdown("""
     .header-box h1 { color: white; margin: 0; font-family: sans-serif; font-size: 42px; }
     .header-box p { color: #bdc3c7; margin: 5px 0 0 0; font-size: 18px; text-transform: uppercase; letter-spacing: 1px; }
     .report-container { border: 1px solid #ced4da; padding: 20px; border-radius: 10px; background-color: white; font-family: sans-serif; margin-top: 20px; }
-    .report-header { border-bottom: 2px solid #3498db; margin-bottom: 20px; padding-bottom: 10px; color: #2c3e50; font-size: 24px; text-transform: uppercase; }
 </style>
 <div class="header-box">
     <h1>Plataforma de Diagnóstico Digital</h1>
     <p>MÓDULO DE ANÁLISIS CLÍNICO AVANZADO</p>
 </div>
 """, unsafe_allow_html=True)
-
-st.info("**Gestión Hospitalaria:** Ingrese la filiación completa de la paciente y cargue el estudio para su procesamiento y registro.")
 
 # Formulario
 c1, c2 = st.columns([1, 2])
@@ -77,26 +70,24 @@ a_pat = c4.text_input("A. Paterno:", value="Reyes")
 a_mat = c5.text_input("A. Materno:", value="Morales")
 uploader = st.file_uploader("📤 Subir Imagen Radiográfica (1)", type=["jpg", "png", "jpeg"])
 
-# --- LÓGICA DE PROCESAMIENTO ---
+# --- LÓGICA ---
 if not st.session_state.get('analizado', False):
     st.markdown('<div class="btn-ejecutar">', unsafe_allow_html=True)
     if st.button("Ejecutar Análisis Clínico"):
         if uploader:
-            with st.spinner("🔬 Analizando y Sincronizando con Base de Datos..."):
+            with st.spinner("🔬 Procesando y Sincronizando con Drive..."):
                 try:
-                    # 1. Procesar Imagen
+                    # 1. IA Inferencia
                     file_bytes = np.asarray(bytearray(uploader.read()), dtype=np.uint8)
                     img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
                     h, w, _ = img.shape
-                    pix_totales = h * w
-                    
-                    # 2. IA Inferencia
                     _, buffer = cv2.imencode('.jpg', img)
                     img_64 = base64.b64encode(buffer).decode('utf-8')
-                    url = f"https://outline.roboflow.com/{ENDPOINT}"
-                    response = requests.post(url, params={"api_key": API_KEY, "confidence": "40"}, 
-                                          data=img_64, headers={"Content-Type": "application/x-www-form-urlencoded"})
-                    prediction = response.json()
+                    
+                    res = requests.post(f"https://outline.roboflow.com/{ENDPOINT}", 
+                                      params={"api_key": API_KEY, "confidence": "40"}, 
+                                      data=img_64, headers={"Content-Type": "application/x-www-form-urlencoded"})
+                    prediction = res.json()
                     
                     if "predictions" in prediction:
                         preds = [p for p in prediction['predictions'] if p.get('class') == 'tumor']
@@ -106,42 +97,50 @@ if not st.session_state.get('analizado', False):
                             cv2.fillPoly(mask, [pts], 255)
                         
                         pix_tumor = np.count_nonzero(mask)
-                        porcentaje = (pix_tumor / pix_totales) * 100
-                        
-                        # Generar Imagen Resultado (RGB para Streamlit)
+                        porcentaje = (pix_tumor / (h * w)) * 100
                         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                         overlay = img_rgb.copy()
                         overlay[mask > 0] = [255, 0, 0]
                         res_img = cv2.addWeighted(img_rgb, 0.7, overlay, 0.3, 0)
+                        
                         st.image(res_img, use_container_width=True)
 
-                        # 3. SINCRONIZACIÓN NUBE
+                        # 2. SINCRONIZACIÓN GOOGLE
                         creds = conectar_google()
+                        drive_id = "Error_Drive"
                         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         file_name = f"Analisis_{nombre}_{a_pat}_{expediente}.jpg"
-                        drive_id = "No_Sincronizado"
-                        
-                        if creds:
-                            drive_id = subir_a_drive(creds, res_img, file_name)
-                            # Registro en Google Sheets (Orden exacto que pediste)
-                            gc = gspread.authorize(creds)
-                            sh = gc.open(SPREADSHEET_NAME).sheet1
-                            sh.append_row([
-                                now_str, tipo_reg, expediente, nombre, a_pat, a_mat, 
-                                pix_totales, pix_tumor, round(porcentaje, 4), drive_id
-                            ])
 
-                        # --- REPORTE TÉCNICO ---
+                        if creds:
+                            service = build('drive', 'v3', credentials=creds)
+                            # Navegar carpetas
+                            parent_id = buscar_o_crear_carpeta(service, PARENT_FOLDER_NAME)
+                            target_folder_id = buscar_o_crear_carpeta(service, "Base_Datos_Pacientes", parent_id)
+                            
+                            # Subir Imagen
+                            cv2.imwrite(file_name, cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR))
+                            media = MediaFileUpload(file_name, mimetype='image/jpeg')
+                            f_metadata = {'name': file_name, 'parents': [target_folder_id]}
+                            drive_file = service.files().create(body=f_metadata, media_body=media, fields='id').execute()
+                            drive_id = drive_file.get('id')
+                            os.remove(file_name)
+
+                            # Guardar en Sheets
+                            gc = gspread.authorize(creds)
+                            sh = gc.open(SHEET_NAME).sheet1
+                            sh.append_row([now_str, tipo_reg, expediente, nombre, a_pat, a_mat, h*w, pix_tumor, round(porcentaje, 4), drive_id])
+
+                        # 3. REPORTE TÉCNICO
                         st.markdown(f"""
                         <div class="report-container">
-                            <div class="report-header">REPORTE TÉCNICO DE SEGMENTACIÓN</div>
+                            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px;">REPORTE TÉCNICO DE SEGMENTACIÓN</h2>
                             <div style="background-color: #fff5f0; text-align: center; border: 1px solid #e67e22; padding: 20px; border-radius: 10px;">
                                 <p style="color: #e67e22; margin:0; font-weight: bold; font-size: 14px; text-transform: uppercase;">ÁREA DE OCUPACIÓN TUMORAL</p>
                                 <h1 style="color: #c23616; margin:0; font-size: 55px;">{porcentaje:.4f} %</h1>
                             </div>
                             <div style="color: #95a5a6; font-size: 13px; margin-top: 15px; line-height: 1.6;">
                                 Sincronizado con Historial Clínico (Base de Datos Hospitalaria).<br>
-                                Imagen de diagnóstico guardada exitosamente en Drive ID: <b>{drive_id}</b><br>
+                                Imagen guardada en Drive ID: <b>{drive_id}</b><br>
                                 Referencia: {file_name} | Fecha: {now_str}
                             </div>
                         </div>
@@ -149,7 +148,7 @@ if not st.session_state.get('analizado', False):
                         st.session_state['analizado'] = True
                         st.rerun()
                 except Exception as e:
-                    st.error(f"Error en sincronización: {e}")
+                    st.error(f"Error técnico: {e}")
     st.markdown('</div>', unsafe_allow_html=True)
 
 if st.session_state.get('analizado', False):
