@@ -17,7 +17,6 @@ SHEET_ID = "1sdmCsIJmRz84Fu26KtTrE_rTTh7SzoS5womeVctnXQ4"
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Plataforma de Diagnóstico Digital", layout="wide")
 
-# Inicializar estado para controlar la visualización
 if 'analizado' not in st.session_state:
     st.session_state.analizado = False
 
@@ -40,9 +39,8 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Lógica de visualización condicional
+# Lógica de visualización
 if not st.session_state.analizado:
-    # Mostrar indicación SOLO antes del resultado
     st.markdown('<p class="instruction-text">Por favor, rellene los datos solicitados e inserte la mamografía para su análisis.</p>', unsafe_allow_html=True)
     
     # Formulario
@@ -95,7 +93,7 @@ if not st.session_state.analizado:
                         response_bb = requests.post("https://api.imgbb.com/1/upload", data={"key": API_KEY_IMGBB, "image": img_bb_64})
                         url_imagen = response_bb.json()["data"]["url"]
 
-                        # 3. Google Sheets
+                        # 3. Google Sheets (Siempre agrega una nueva fila)
                         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         if "service_account_base64" in st.secrets:
                             b64_str = st.secrets["service_account_base64"].strip()
@@ -105,9 +103,22 @@ if not st.session_state.analizado:
                             creds = Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/spreadsheets"])
                             gc = gspread.authorize(creds)
                             sh = gc.open_by_key(SHEET_ID).sheet1
-                            sh.append_row([now_str, str(tipo_reg), str(expediente), str(nombre), str(a_pat), str(a_mat), int(h*w), pix_tumor, round(porcentaje, 4), url_imagen])
+                            
+                            # La función append_row siempre inserta al final, creando el historial
+                            sh.append_row([
+                                now_str, 
+                                str(tipo_reg), 
+                                str(expediente), 
+                                str(nombre), 
+                                str(a_pat), 
+                                str(a_mat), 
+                                int(h*w), 
+                                pix_tumor, 
+                                round(porcentaje, 4), 
+                                url_imagen
+                            ])
 
-                        # Guardar datos en session_state
+                        # Datos para el reporte
                         st.session_state.res_img = res_img
                         st.session_state.datos = {
                             "paciente": f"{nombre} {a_pat} {a_mat}",
@@ -123,9 +134,8 @@ if not st.session_state.analizado:
                 except Exception as e:
                     st.error(f"Error: {e}")
 
-# --- SECCIÓN DE RESULTADOS ---
+# --- RESULTADOS ---
 if st.session_state.analizado:
-    # La imagen analizada
     st.image(st.session_state.res_img, use_container_width=True)
     
     d = st.session_state.datos
