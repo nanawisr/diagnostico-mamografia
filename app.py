@@ -1,17 +1,14 @@
 import streamlit as st
 import cv2
 import numpy as np
-from roboflow import Roboflow
-from datetime import datetime
+import requests
+import base64
 import os
-import gspread
-from google.oauth2.service_account import Credentials
 
-# --- CONFIGURACIÓN ---
-API_KEY_PRIVATE = "nOMi9VHi25eRhP420XFn" 
-WORKSPACE_ID = "diseo-de-proyectos"
-PROJECT_NAME = "segmentacion-tumores-mamografia-sn1wk"
-VERSION_NUM = 3 
+# --- DATOS DE CONEXIÓN DIRECTA ---
+API_KEY = "nOMi9VHi25eRhP420XFn"
+# Usamos la Versión 5 que es la que confirmamos que tiene el entrenamiento listo
+ENDPOINT = "segmentacion-tumores-mamografia-sn1wk/5"
 
 # --- INTERFAZ ---
 st.set_page_config(page_title="Plataforma de Diagnóstico Digital", layout="wide")
@@ -22,11 +19,12 @@ st.markdown("""
     .header-box { background-color: #2c3e50; padding: 20px; border-radius: 5px; border-left: 10px solid #3498db; margin-bottom: 20px; }
 </style>
 <div class="header-box">
-    <h1 style="color: white; margin: 0;">Plataforma de Diagnóstico Digital</h1>
-    <p style="color: #bdc3c7; margin: 5px 0 0 0;">Análisis Clínico Avanzado</p>
+    <h1 style="color: white; margin: 0; font-family: sans-serif;">Plataforma de Diagnóstico Digital</h1>
+    <p style="color: #bdc3c7; margin: 5px 0 0 0;">Análisis Clínico Avanzado | Ingeniería Biomédica</p>
 </div>
 """, unsafe_allow_html=True)
 
+# Formulario
 c1, c2 = st.columns([1, 2])
 tipo_reg = c1.selectbox("Registro:", ["Nuevo", "Existente"])
 expediente = c2.text_input("Expediente:", value="00478119")
@@ -36,69 +34,69 @@ nombre = c3.text_input("Nombre(s):", value="Ana")
 a_pat = c4.text_input("A. Paterno:", value="Reyes")
 a_mat = c5.text_input("A. Materno:", value="Morales")
 
-uploader = st.file_uploader("📤 Subir Imagen (1)", type=["jpg", "png", "jpeg"])
-ejecutar = st.button("Ejecutar Análisis Clínico")
+uploader = st.file_uploader("📤 Subir Imagen Radiográfica", type=["jpg", "png", "jpeg"])
+ejecutar = st.button("EJECUTAR ANÁLISIS CLÍNICO")
 
 if ejecutar:
     if not uploader:
-        st.warning("⚠️ Cargue una imagen.")
+        st.warning("⚠️ Por favor, cargue una imagen.")
     else:
-        with st.spinner("🔬 Conectando con Roboflow..."):
+        with st.spinner("🔬 Conectando con el Servidor de IA..."):
             try:
-                # --- NUEVA LÓGICA DE CONEXIÓN FORZADA ---
-                rf = Roboflow(api_key=API_KEY_PRIVATE)
-                workspace = rf.workspace(WORKSPACE_ID)
-                project = workspace.project(PROJECT_NAME)
-                
-                # Intentamos obtener el modelo
-                version = project.version(VERSION_NUM)
-                model = version.model
-                
-                if model is None:
-                    # Intento de rescate si el modelo falla
-                    st.error("⚠️ El modelo no cargó correctamente. Intentando reconexión...")
-                    model = project.version(VERSION_NUM).model
-
-                # Si logramos conectar
+                # 1. Leer imagen
                 file_bytes = np.asarray(bytearray(uploader.read()), dtype=np.uint8)
                 img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
                 h, w, _ = img.shape
-                temp_file = "img_analisis.jpg"
-                cv2.imwrite(temp_file, img)
-
-                # Inferencia
-                prediction = model.predict(temp_file, confidence=40).json()
-                preds = [p for p in prediction['predictions'] if p.get('class') == 'tumor']
                 
-                # Dibujar y mostrar
-                mask = np.zeros((h, w), dtype=np.uint8)
-                if not preds:
-                    st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-                    st.success("✅ No se detectaron hallazgos.")
+                # 2. Convertir a Base64 (Método infalible para APIs)
+                _, buffer = cv2.imencode('.jpg', img)
+                img_base64 = base64.b64encode(buffer).decode('utf-8')
+                
+                # 3. Petición Directa a Roboflow (Saltándonos librerías que fallan)
+                url = f"https://outline.roboflow.com/{ENDPOINT}"
+                params = {"api_key": API_KEY, "confidence": "40"}
+                
+                response = requests.post(url, params=params, data=img_base64)
+                prediction = response.json()
+                
+                if "predictions" not in prediction:
+                    st.error(f"Error de Respuesta: {prediction.get('message', 'Servidor no disponible')}")
                 else:
-                    for p in preds:
-                        pts = np.array([(int(pt['x']), int(pt['y'])) for pt in p['points']], np.int32)
-                        cv2.fillPoly(mask, [pts], 255)
+                    preds = [p for p in prediction['predictions'] if p.get('class') == 'tumor']
                     
-                    tumor_px = np.count_nonzero(mask)
-                    porcentaje = (tumor_px / (h * w)) * 100
+                    st.subheader(f"Resultados de Análisis - {nombre} {a_pat} {a_mat}")
                     
-                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                    overlay = img_rgb.copy()
-                    overlay[mask > 0] = [255, 0, 0]
-                    st.image(cv2.addWeighted(img_rgb, 0.7, overlay, 0.3, 0), use_container_width=True)
+                    if not preds:
+                        st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                        st.success("✅ Análisis Finalizado: No se detectaron hallazgos tumorales.")
+                    else:
+                        mask = np.zeros((h, w), dtype=np.uint8)
+                        for p in preds:
+                            pts = np.array([(int(pt['x']), int(pt['y'])) for pt in p['points']], np.int32)
+                            cv2.fillPoly(mask, [pts], 255)
+                        
+                        tumor_px = np.count_nonzero(mask)
+                        porcentaje = (tumor_px / (h * w)) * 100
+                        
+                        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                        overlay = img_rgb.copy()
+                        overlay[mask > 0] = [255, 0, 0] # Color rojo
+                        st.image(cv2.addWeighted(img_rgb, 0.7, overlay, 0.3, 0), use_container_width=True)
 
-                    st.markdown(f"""
-                    <div style="border: 2px solid #3498db; padding: 20px; border-radius: 10px; background-color: #f8f9fa;">
-                        <h2 style="color: #2c3e50;">REPORTE TÉCNICO</h2>
-                        <h1 style="color: #c23616; text-align: center;">{porcentaje:.4f} %</h1>
-                    </div>
-                    """, unsafe_allow_html=True)
-                
-                if os.path.exists(temp_file): os.remove(temp_file)
+                        # REPORTE TÉCNICO
+                        st.markdown(f"""
+                        <div style="border: 2px solid #3498db; padding: 20px; border-radius: 10px; background-color: #f8f9fa;">
+                            <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db; margin-top: 0;">REPORTE TÉCNICO DE SEGMENTACIÓN</h2>
+                            <div style="background-color: #fdf2e9; text-align: center; border: 1px solid #e67e22; padding: 15px; border-radius: 5px; margin-top: 15px;">
+                                <p style="color: #e67e22; margin:0; font-weight: bold;">ÁREA DE OCUPACIÓN TUMORAL</p>
+                                <h1 style="color: #c23616; margin:0; font-size: 45px;">{porcentaje:.4f} %</h1>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
 
             except Exception as e:
-                st.error(f"❌ Error crítico de Roboflow: {str(e)}")
-                st.info("Esto suele pasar si el proyecto en Roboflow no está desplegado o la versión 6 no tiene el modelo entrenado (Train).")
+                st.error(f"❌ Error en el proceso: {str(e)}")
 
-st.button("Nueva Consulta", on_click=lambda: st.rerun())
+st.write("---")
+if st.button("Nueva Consulta"):
+    st.rerun()
