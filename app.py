@@ -43,7 +43,7 @@ st.markdown("""
 
 st.info("**Gestión Hospitalaria:** Ingrese la filiación completa de la paciente y cargue el estudio para su procesamiento y registro.")
 
-# --- FORMULARIO DE FILIACIÓN ---
+# --- FORMULARIO ---
 c1, c2 = st.columns([1, 2])
 tipo_reg = c1.selectbox("Registro:", ["Nuevo", "Existente"])
 expediente = c2.text_input("Expediente:", value="00478119")
@@ -66,7 +66,7 @@ if ejecutar:
     else:
         with st.spinner("🔬 Procesando imagen y sincronizando datos..."):
             try:
-                # 1. PROCESAMIENTO DE IMAGEN E IA
+                # 1. PROCESAMIENTO IA
                 file_bytes = np.asarray(bytearray(uploader.read()), dtype=np.uint8)
                 img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
                 h, w, _ = img.shape
@@ -104,14 +104,20 @@ if ejecutar:
                     file_name = f"Analisis_{nombre}_{a_pat}_{expediente}.jpg"
                     drive_id = "No sincronizado"
 
-                    # 2. SINCRONIZACIÓN CON GOOGLE
+                    # 2. SINCRONIZACIÓN GOOGLE (CON LIMPIEZA DE LLAVE)
                     try:
                         if "google_drive_credentials" in st.secrets:
-                            # CORRECCIÓN AQUÍ: Limpieza de la estructura de diccionarios
                             creds_dict = dict(st.secrets["google_drive_credentials"])
-                            if "private_key" in creds_dict:
-                                creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
                             
+                            # --- LIMPIEZA DE LA PRIVATE KEY ---
+                            if "private_key" in creds_dict:
+                                pk = creds_dict["private_key"]
+                                # Quitamos comillas extras, espacios y arreglamos saltos de línea
+                                pk = pk.strip().replace("\\n", "\n")
+                                if pk.startswith('"') and pk.endswith('"'):
+                                    pk = pk[1:-1]
+                                creds_dict["private_key"] = pk
+
                             creds = Credentials.from_service_account_info(
                                 creds_dict,
                                 scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
