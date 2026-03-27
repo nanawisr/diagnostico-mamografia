@@ -116,7 +116,8 @@ if ejecutar:
                                 # CORRECCIÓN CRÍTICA: Aseguramos que los saltos de línea sean correctos
                                 if "private_key" in creds_dict:
                                     creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
-                                creds = Credentials.from_service_account_info(creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
+                                creds = Credentials.from_service_account_info(creds_dict,
+                                        scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
                             ])
                             
                             # Subir a Google Drive
