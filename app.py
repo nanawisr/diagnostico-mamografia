@@ -110,10 +110,13 @@ if ejecutar:
                     # 2. INTENTO DE SINCRONIZACIÓN CON GOOGLE (DRIVE Y SHEETS)
                     try:
                         if "google_drive_credentials" in st.secrets:
-                            creds_info = st.secrets["google_drive_credentials"]
-                            creds = Credentials.from_service_account_info(creds_info, scopes=[
-                                "https://www.googleapis.com/auth/spreadsheets", 
-                                "https://www.googleapis.com/auth/drive"
+                            try:
+                                # Extraemos las credenciales 
+                                creds_dict = dict(st.secrets["google_drive_credentials"])
+                                # CORRECCIÓN CRÍTICA: Aseguramos que los saltos de línea sean correctos
+                                if "private_key" in creds_dict:
+                                    creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+                                creds = Credentials.from_service_account_info(creds_dict, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
                             ])
                             
                             # Subir a Google Drive
