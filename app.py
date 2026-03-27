@@ -11,25 +11,26 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# --- CONFIGURACIÓN MAESTRA ---
+# --- CONFIGURACIÓN ---
 API_KEY_ROBOFLOW = "nOMi9VHi25eRhP420XFn"
 ENDPOINT_ROBOFLOW = "segmentacion-tumores-mamografia-sn1wk/5"
+
+# Identificadores de Google (Asegúrate de que estos IDs sean los correctos)
 SHEET_ID = "1sdmCsIJmRz84Fu26KtTrE_rTTh7SzoS5womeVctnXQ4"
-DRIVE_FOLDER_ID = "1S66F3LwaWazDogCbcU8kGJH91vKTuyHb"
+# ID de la carpeta 'Pacientes_Mamografía'
+DRIVE_FOLDER_ID = "1S66F3LwaWazDogCbcU8kGJH91vKTuyHb" 
 MI_CORREO = "nana.wowrara@gmail.com"
 
 st.set_page_config(page_title="Plataforma de Diagnóstico Digital", layout="wide")
 
-# --- ESTILOS ---
+# --- DISEÑO ---
 st.markdown("""
 <style>
     .stButton > button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; background-color: #1e88e5 !important; color: white !important; }
     .header-box { background-color: #34495e; padding: 25px; border-radius: 5px; border-left: 10px solid #3498db; margin-bottom: 20px; color: white; }
-    .report-container { border: 1px solid #ced4da; padding: 20px; border-radius: 10px; background-color: white; margin-top: 20px; }
 </style>
 <div class="header-box">
-    <h1 style='margin:0;'>Plataforma de Diagnóstico Digital</h1>
-    <p style='margin:0; color:#bdc3c7;'>MÓDULO DE ANÁLISIS CLÍNICO AVANZADO</p>
+    <h1 style='margin:0;'>Diagnóstico: Carpeta Pacientes_Mamografía</h1>
 </div>
 """, unsafe_allow_html=True)
 
@@ -37,14 +38,19 @@ st.markdown("""
 c1, c2 = st.columns([1, 2])
 tipo_reg = c1.selectbox("Registro:", ["Nuevo", "Existente"])
 expediente = c2.text_input("Expediente:", value="00478119")
-nombre = st.text_input("Nombre Completo:", value="Ana Reyes Morales")
+
+c3, c4, c5 = st.columns(3)
+nombre = c3.text_input("Nombre(s):", value="Ana")
+a_pat = c4.text_input("A. Paterno:", value="Reyes")
+a_mat = c5.text_input("A. Materno:", value="Morales")
+
 uploader = st.file_uploader("📤 Subir Imagen Radiográfica", type=["jpg", "png", "jpeg"])
 
-if st.button("Ejecutar Análisis Clínico"):
+if st.button("Ejecutar Análisis y Guardar en Carpeta"):
     if not uploader:
-        st.warning("⚠️ Por favor, cargue una imagen.")
+        st.warning("⚠️ Cargue una imagen para procesar.")
     else:
-        with st.spinner("🔬 Procesando análisis..."):
+        with st.spinner("🔬 Procesando y guardando imagen en Drive..."):
             try:
                 # 1. IA Roboflow
                 file_bytes = np.asarray(bytearray(uploader.read()), dtype=np.uint8)
@@ -72,10 +78,10 @@ if st.button("Ejecutar Análisis Clínico"):
                     overlay[mask > 0] = [255, 0, 0]
                     res_img = cv2.addWeighted(img_rgb, 0.7, overlay, 0.3, 0)
                     
-                    st.image(res_img, use_container_width=True)
+                    st.image(res_img, use_container_width=True, caption="Imagen Procesada para Guardado")
 
-                    # 2. SINCRONIZACIÓN INTELIGENTE
-                    drive_id = "Imagen en espera (Cuota)"
+                    # 2. GUARDADO PRIORITARIO EN DRIVE
+                    drive_id = "No guardado"
                     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                     if "service_account_base64" in st.secrets:
@@ -84,44 +90,48 @@ if st.button("Ejecutar Análisis Clínico"):
                             b64_str += "=" * ((4 - len(b64_str) % 4) % 4)
                             info = json.loads(base64.b64decode(b64_str))
                             info["private_key"] = info["private_key"].replace("\\n", "\n")
-                            creds = Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
+                            creds = Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/drive", "https://www.googleapis.com/auth/spreadsheets"])
                             
-                            # Intentar Drive (si falla, no detiene la app)
-                            try:
-                                ds = build('drive', 'v3', credentials=creds)
-                                file_name = f"Analisis_{expediente}.jpg"
-                                cv2.imwrite(file_name, cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR))
-                                media = MediaFileUpload(file_name, mimetype='image/jpeg')
-                                df = ds.files().create(body={'name': file_name, 'parents': [DRIVE_FOLDER_ID]}, media_body=media, fields='id', supportsAllDrives=True).execute()
-                                drive_id = df.get('id')
-                                ds.permissions().create(fileId=drive_id, body={'type': 'user', 'role': 'writer', 'emailAddress': MI_CORREO}).execute()
-                                if os.path.exists(file_name): os.remove(file_name)
-                            except:
-                                drive_id = "Local (Error de Cuota Google)"
+                            # DRIVE: El objetivo principal
+                            ds = build('drive', 'v3', credentials=creds)
+                            file_name = f"Analisis_{expediente}_{datetime.now().strftime('%H%M%S')}.jpg"
+                            cv2.imwrite(file_name, cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR))
+                            
+                            media = MediaFileUpload(file_name, mimetype='image/jpeg', resumable=False)
+                            file_metadata = {'name': file_name, 'parents': [DRIVE_FOLDER_ID]}
+                            
+                            file_drive = ds.files().create(
+                                body=file_metadata, 
+                                media_body=media, 
+                                fields='id',
+                                supportsAllDrives=True
+                            ).execute()
+                            
+                            drive_id = file_drive.get('id')
+                            
+                            # Compartir para asegurar visibilidad en tu unidad
+                            ds.permissions().create(fileId=drive_id, body={'type': 'user', 'role': 'writer', 'emailAddress': MI_CORREO}).execute()
+                            
+                            if os.path.exists(file_name): os.remove(file_name)
+                            st.success(f"✅ Imagen guardada exitosamente en la carpeta. ID: {drive_id}")
 
-                            # Sheets (Este SIEMPRE debe quedar registrado)
+                            # 3. REGISTRO EN EXCEL (COMO RESPALDO)
                             gc = gspread.authorize(creds)
                             sh = gc.open_by_key(SHEET_ID).sheet1
-                            sh.append_row([now_str, str(tipo_reg), str(expediente), str(nombre), "", "", int(h*w), pix_tumor, round(porcentaje, 4), drive_id])
-                            st.toast("✅ Base de Datos Actualizada")
-                        except Exception as e_main:
-                            st.error(f"Error Sincronización: {e_main}")
+                            sh.append_row([
+                                now_str, str(tipo_reg), str(expediente), 
+                                str(nombre), str(a_pat), str(a_mat), 
+                                int(h*w), pix_tumor, round(porcentaje, 4), drive_id
+                            ])
+                            
+                        except Exception as e:
+                            st.error(f"Error al intentar guardar en Drive: {e}")
+                            st.info("Nota: Revisa si la cuenta de servicio tiene permisos de editor en la carpeta destino.")
 
-                    # 3. REPORTE FINAL
-                    st.markdown(f"""
-                    <div class="report-container">
-                        <h2 style='color:#2c3e50; border-bottom:2px solid #1e88e5;'>RESULTADO DEL ANÁLISIS</h2>
-                        <div style='background-color:#fff5f0; text-align:center; padding:30px; border-radius:10px; border:1px solid #e67e22; margin:20px 0;'>
-                            <p style='color:#e67e22; font-weight:bold; margin:0;'>ÁREA TUMORAL DETECTADA</p>
-                            <h1 style='color:#c23616; font-size:60px; margin:0;'>{porcentaje:.4f} %</h1>
-                        </div>
-                        <p style='color:#95a5a6; font-size:12px;'>Registro: {now_str} | ID: {drive_id}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
                 else:
-                    st.info("No se detectaron anomalías en la muestra.")
+                    st.info("Análisis completado: No se detectaron anomalías.")
             except Exception as e:
-                st.error(f"Error de sistema: {e}")
+                st.error(f"Error técnico general: {e}")
 
-if st.button("Nueva Consulta"):
+if st.button("Limpiar Pantalla"):
     st.rerun()
