@@ -8,27 +8,14 @@ import os
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- CONFIGURACIÓN BASADA EN TU CAPTURA ---
+# --- CONFIGURACIÓN ---
 API_KEY = "nOMi9VHi25eRhP420XFn"
 WORKSPACE = "diseo-de-proyectos"
 PROJECT_ID = "segmentacion-tumores-mamografia-sn1wk"
 VERSION = 6 
 SPREADSHEET_NAME = "Base_Datos_Pacientes"
 
-# --- FUNCIÓN PARA CARGAR EL MODELO (OPTIMIZADA) ---
-@st.cache_resource
-def cargar_modelo():
-    try:
-        rf = Roboflow(api_key=API_KEY)
-        project = rf.workspace(WORKSPACE).project(PROJECT_ID)
-        # Usamos .model para inferencia en tiempo real, no .download
-        model = project.version(VERSION).model
-        return model
-    except Exception as e:
-        st.error(f"Error al conectar con Roboflow: {e}")
-        return None
-
-# --- CONEXIÓN CON GOOGLE SHEETS ---
+# --- CONEXIÓN GOOGLE SECRETS ---
 def conectar_google():
     try:
         creds_dict = st.secrets["google_drive_credentials"]
@@ -37,125 +24,111 @@ def conectar_google():
             "https://www.googleapis.com/auth/drive"
         ])
         return gspread.authorize(creds)
-    except Exception as e:
-        st.error(f"Error de permisos en Google: {e}")
+    except:
         return None
 
-# --- INTERFAZ VISUAL PROFESIONAL ---
-st.set_page_config(page_title="Diagnóstico Digital - Anáhuac", layout="wide")
+# --- CARGA DEL MODELO ---
+@st.cache_resource
+def cargar_modelo():
+    try:
+        rf = Roboflow(api_key=API_KEY)
+        return rf.workspace(WORKSPACE).project(PROJECT_ID).version(VERSION).model
+    except:
+        return None
+
+# --- INTERFAZ (Tu diseño original) ---
+st.set_page_config(page_title="Plataforma de Diagnóstico Digital", layout="wide")
 
 st.markdown("""
-<style>
-    .main-header {
-        background-color: #2c3e50;
-        padding: 30px;
-        border-radius: 15px;
-        border-left: 12px solid #3498db;
-        margin-bottom: 25px;
-    }
-    div.stButton > button:first-child {
-        background-color: #3498db;
-        color: white;
-        height: 3.5em;
-        width: 100%;
-        border-radius: 10px;
-        font-weight: bold;
-        border: none;
-    }
-    div.stButton > button:hover {
-        background-color: #2980b9;
-        border: none;
-    }
-</style>
-<div class="main-header">
+<div style="background-color: #2c3e50; padding: 20px; border-radius: 5px; border-left: 10px solid #3498db; margin-bottom: 20px;">
     <h1 style="color: white; margin: 0; font-family: sans-serif;">Plataforma de Diagnóstico Digital</h1>
-    <p style="color: #bdc3c7; margin: 5px 0 0 0;">Análisis de Mamografías | Ingeniería Biomédica</p>
+    <p style="color: #bdc3c7; margin: 5px 0 0 0;">MÓDULO DE ANÁLISIS CLÍNICO AVANZADO</p>
 </div>
 """, unsafe_allow_html=True)
 
-# --- FORMULARIO ---
-with st.container():
-    col_exp, col_nom = st.columns([1, 2])
-    exp = col_exp.text_input("Número de Expediente:", placeholder="Ej. 00478119")
-    nom = col_nom.text_input("Nombre Completo del Paciente:")
+st.info("**Gestión Hospitalaria:** Ingrese la filiación completa de la paciente y cargue el estudio para su procesamiento y registro.")
 
-    c1, c2 = st.columns(2)
-    ap_p = c1.text_input("Apellido Paterno:")
-    ap_m = c2.text_input("Apellido Materno:")
+# Layout de campos como en tu imagen
+c1, c2 = st.columns([1, 2])
+tipo = c1.selectbox("Registro:", ["Nuevo", "Existente"])
+exp = c2.text_input("Expediente:", value="00478119")
 
-    uploader = st.file_uploader("Subir Imagen Radiográfica (JPG/PNG)", type=["jpg", "png", "jpeg"])
-    
-    boton = st.button("EJECUTAR ANÁLISIS CLÍNICO")
+c3, c4, c5 = st.columns(3)
+nom = c3.text_input("Nombre(s):", value="Ana")
+pat = c4.text_input("A. Paterno:", value="Reyes")
+mat = c5.text_input("A. Materno:", value="Morales")
 
-# --- PROCESAMIENTO ---
+uploader = st.file_uploader("📤 Subir Imagen (1)", type=["jpg", "png", "jpeg"])
+
+# Botón Azul
+st.markdown("""<style>div.stButton > button:first-child { background-color: #3498db; color: white; width: 100%; }</style>""", unsafe_allow_html=True)
+boton = st.button("Ejecutar Análisis Clínico")
+
 if boton:
-    if not exp or not uploader:
-        st.warning("⚠️ Ingrese el número de expediente y cargue una imagen.")
+    if not uploader:
+        st.error("Por favor cargue una imagen.")
     else:
-        # Cargamos el modelo (usará la versión en caché si ya se cargó una vez)
         model = cargar_modelo()
-        
         if model:
-            with st.spinner("🔬 Procesando imagen con Red Neuronal..."):
-                try:
-                    # 1. Preparar imagen
-                    file_bytes = np.asarray(bytearray(uploader.read()), dtype=np.uint8)
-                    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
-                    temp_name = "analisis_actual.jpg"
-                    cv2.imwrite(temp_name, img)
-
-                    # 2. Inferencia (Predicción)
-                    prediction = model.predict(temp_name, confidence=40).json()
-                    preds = [p for p in prediction['predictions'] if p.get('class') == 'tumor']
+            with st.spinner("Conectando con la red neuronal de Roboflow..."):
+                # Procesamiento
+                file_bytes = np.asarray(bytearray(uploader.read()), dtype=np.uint8)
+                img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+                cv2.imwrite("temp.jpg", img)
+                
+                prediction = model.predict("temp.jpg", confidence=40).json()
+                preds = [p for p in prediction['predictions'] if p.get('class') == 'tumor']
+                
+                h, w, _ = img.shape
+                mask = np.zeros((h, w), dtype=np.uint8)
+                
+                st.subheader(f"Resultados de Análisis - {nom} {pat} {mat}")
+                
+                if not preds:
+                    st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+                    st.success("No se detectaron hallazgos.")
+                    tumor_px, porcentaje = 0, 0
+                else:
+                    for p in preds:
+                        pts = np.array([(int(pt['x']), int(pt['y'])) for pt in p['points']], np.int32)
+                        cv2.fillPoly(mask, [pts], 255)
                     
-                    h, w, _ = img.shape
-                    mask = np.zeros((h, w), dtype=np.uint8)
+                    tumor_px = np.count_nonzero(mask)
+                    porcentaje = (tumor_px / (h * w)) * 100
+                    
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    overlay = img_rgb.copy()
+                    overlay[mask > 0] = [255, 0, 0]
+                    st.image(cv2.addWeighted(img_rgb, 0.7, overlay, 0.3, 0), use_container_width=True)
 
-                    if not preds:
-                        st.success("✅ Análisis Finalizado: Tejido sin anomalías detectadas.")
-                        st.image(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), caption="Radiografía Original")
-                        tumor_px, porcentaje = 0, 0
-                    else:
-                        for p in preds:
-                            pts = np.array([(int(pt['x']), int(pt['y'])) for pt in p['points']], np.int32)
-                            cv2.fillPoly(mask, [pts], 255)
-                        
-                        tumor_px = np.count_nonzero(mask)
-                        porcentaje = (tumor_px / (h * w)) * 100
-                        
-                        # Visualización de Segmentación
-                        img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                        overlay = img_rgb.copy()
-                        overlay[mask > 0] = [255, 0, 0] # Color rojo para tumor
-                        resultado = cv2.addWeighted(img_rgb, 0.7, overlay, 0.3, 0)
-                        
-                        st.image(resultado, caption="Detección de Segmentación Tumoral", use_container_width=True)
-                        
-                        # Reporte en pantalla
-                        st.markdown(f"""
-                        <div style="background-color: white; padding: 20px; border-radius: 10px; border: 1px solid #eee; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                            <h3 style="color: #2c3e50; border-bottom: 2px solid #3498db;">Resultado del Análisis</h3>
-                            <p><strong>Paciente:</strong> {nom} {ap_p} {ap_m}</p>
-                            <p style="font-size: 24px; color: #c23616; font-weight: bold;">Ocupación Tumoral: {porcentaje:.4f} %</p>
+                    # REPORTE TÉCNICO (Como tu imagen)
+                    st.markdown(f"""
+                    <div style="border: 1px solid #3498db; padding: 20px; border-radius: 10px;">
+                        <h2 style="color: #2c3e50; border-bottom: 2px solid #3498db;">REPORTE TÉCNICO DE SEGMENTACIÓN</h2>
+                        <table style="width:100%">
+                            <tr>
+                                <td><p>PACIENTE<br><b>{nom} {pat} {mat}</b></p></td>
+                                <td><p>EXPEDIENTE<br><b>{exp}</b></p></td>
+                            </tr>
+                            <tr>
+                                <td><p>PÍXELES TOTALES<br>{h*w} px</p></td>
+                                <td><p>PÍXELES TUMOR<br><span style="color:red">{tumor_px} px</span></p></td>
+                            </tr>
+                        </table>
+                        <div style="background-color: #fdf2e9; text-align: center; border: 1px solid #e67e22; padding: 10px;">
+                            <p style="color: #e67e22; margin:0;">ÁREA DE OCUPACIÓN TUMORAL</p>
+                            <h1 style="color: #c23616; margin:0;">{porcentaje:.4f} %</h1>
                         </div>
-                        """, unsafe_allow_html=True)
+                    </div>
+                    """, unsafe_allow_html=True)
 
-                    # 3. Sincronizar con Google Sheets
-                    gc = conectar_google()
-                    if gc:
-                        sh = gc.open(SPREADSHEET_NAME).sheet1
-                        sh.append_row([
-                            datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
-                            "Nuevo", exp, nom, ap_p, ap_m, h*w, tumor_px, round(porcentaje, 4)
-                        ])
-                        st.toast("✅ Datos guardados en la nube.")
+                # Sincronización
+                gc = conectar_google()
+                if gc:
+                    sh = gc.open(SPREADSHEET_NAME).sheet1
+                    sh.append_row([datetime.now().strftime("%Y-%m-%d %H:%M:%S"), tipo, exp, nom, pat, mat, h*w, tumor_px, round(porcentaje, 4)])
 
-                except Exception as e:
-                    st.error(f"Error durante el análisis: {e}")
-                finally:
-                    if os.path.exists(temp_name): os.remove(temp_name)
-        else:
-            st.error("No se pudo establecer conexión con el motor de IA.")
-
-if st.sidebar.button("Nueva Consulta"):
+# Botón verde abajo
+st.markdown("""<style>div.stButton > button:last-child { background-color: #27ae60; color: white; }</style>""", unsafe_allow_html=True)
+if st.button("Nueva Consulta"):
     st.rerun()
