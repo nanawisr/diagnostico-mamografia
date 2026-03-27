@@ -35,7 +35,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Formulario (Nombres separados para el Excel)
+# Formulario
 c1, c2 = st.columns([1, 2])
 tipo_reg = c1.selectbox("Registro:", ["Nuevo", "Existente"])
 expediente = c2.text_input("Expediente:", value="00478119")
@@ -70,4 +70,89 @@ if st.button("Ejecutar Análisis y Guardar en Drive"):
                     mask = np.zeros((h, w), dtype=np.uint8)
                     for p in preds:
                         pts = np.array([(int(pt['x']), int(pt['y'])) for pt in p['points']], np.int32)
-                        cv2.fillPoly(mask, [pts
+                        cv2.fillPoly(mask, [pts], 255) # <--- CORREGIDO: Corchete cerrado
+                    
+                    pix_tumor = int(np.count_nonzero(mask))
+                    porcentaje = float((pix_tumor / (h * w)) * 100)
+                    
+                    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    overlay = img_rgb.copy()
+                    overlay[mask > 0] = [255, 0, 0]
+                    res_img = cv2.addWeighted(img_rgb, 0.7, overlay, 0.3, 0)
+                    
+                    st.image(res_img, use_container_width=True)
+
+                    # 2. SINCRONIZACIÓN (PARCHE DE CUOTA DRIVE)
+                    drive_id = "Pendiente"
+                    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                    if "service_account_base64" in st.secrets:
+                        # Decodificación
+                        b64_str = st.secrets["service_account_base64"].strip()
+                        b64_str += "=" * ((4 - len(b64_str) % 4) % 4)
+                        info = json.loads(base64.b64decode(b64_str))
+                        info["private_key"] = info["private_key"].replace("\\n", "\n")
+                        creds = Credentials.from_service_account_info(info, 
+                                scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
+                        
+                        # --- DRIVE: SUBIDA ---
+                        try:
+                            ds = build('drive', 'v3', credentials=creds)
+                            file_name = f"Analisis_{expediente}_{datetime.now().strftime('%H%M%S')}.jpg"
+                            cv2.imwrite(file_name, cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR))
+                            
+                            media = MediaFileUpload(file_name, mimetype='image/jpeg', resumable=False)
+                            file_metadata = {'name': file_name, 'parents': [DRIVE_FOLDER_ID]}
+                            
+                            file_drive = ds.files().create(
+                                body=file_metadata,
+                                media_body=media,
+                                fields='id',
+                                supportsAllDrives=True
+                            ).execute()
+                            
+                            drive_id = file_drive.get('id')
+                            
+                            # Transferencia de permiso a tu correo (para usar tu espacio)
+                            ds.permissions().create(
+                                fileId=drive_id,
+                                body={'type': 'user', 'role': 'writer', 'emailAddress': MI_CORREO},
+                                supportsAllDrives=True
+                            ).execute()
+                            
+                            if os.path.exists(file_name): os.remove(file_name)
+                        except Exception as e_drive:
+                            drive_id = f"Fallo Cuota: {str(e_drive)[:40]}"
+
+                        # --- SHEETS ---
+                        try:
+                            gc = gspread.authorize(creds)
+                            sh = gc.open_by_key(SHEET_ID).sheet1
+                            sh.append_row([
+                                now_str, str(tipo_reg), str(expediente), 
+                                str(nombre), str(a_pat), str(a_mat), 
+                                int(h*w), pix_tumor, round(porcentaje, 4), drive_id
+                            ])
+                            st.toast("✅ Base de Datos y Drive Actualizados")
+                        except Exception as e_sheet:
+                            st.error(f"Error Excel: {e_sheet}")
+
+                    # 3. REPORTE VISUAL
+                    st.markdown(f"""
+                    <div class="report-container">
+                        <div style="background-color: #fff5f0; text-align: center; border: 1px solid #e67e22; padding: 25px; border-radius: 10px;">
+                            <p style="color: #e67e22; margin:0; font-weight: bold;">ÁREA TUMORAL DETECTADA</p>
+                            <h1 style="color: #c23616; margin:0; font-size: 55px;">{porcentaje:.4f} %</h1>
+                        </div>
+                        <p style="color: #95a5a6; font-size: 12px; margin-top: 15px;">
+                            ID Drive: {drive_id} | Carpeta: Carpeta Prueba
+                        </p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.info("No se detectaron anomalías.")
+            except Exception as e:
+                st.error(f"Error Crítico: {e}")
+
+if st.button("Nueva Consulta"):
+    st.rerun()
