@@ -11,7 +11,7 @@ from google.oauth2.service_account import Credentials
 API_KEY_PRIVATE = "nOMi9VHi25eRhP420XFn" 
 WORKSPACE_ID = "diseo-de-proyectos"
 PROJECT_NAME = "segmentacion-tumores-mamografia-sn1wk"
-VERSION_NUM = 5 
+VERSION_NUM = 3 
 
 # --- INTERFAZ ---
 st.set_page_config(page_title="Plataforma de Diagnóstico Digital", layout="wide")
