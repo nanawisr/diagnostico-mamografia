@@ -5,226 +5,98 @@ import requests
 import base64
 from datetime import datetime
 import gspread
-import json
 from google.oauth2.service_account import Credentials
 
-# --- CONFIGURACIÓN MAESTRA ---
+# --- CONFIGURACIÓN ---
 API_KEY_ROBOFLOW = "nOMi9VHi25eRhP420XFn"
 ENDPOINT_ROBOFLOW = "segmentacion-tumores-mamografia-sn1wk/5"
 SHEET_ID = "1sdmCsIJmRz84Fu26KtTrE_rTTh7SzoS5womeVctnXQ4"
-EXCEL_LINK = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit"
+EXCEL_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit"
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Sistema de Diagnóstico Digital", layout="wide")
+st.set_page_config(page_title="Sistema Médico Digital", layout="wide")
 
-# Control de estado de la aplicación
 if 'analizado' not in st.session_state:
     st.session_state.analizado = False
-if 'datos_reporte' not in st.session_state:
-    st.session_state.datos_reporte = None
-if 'res_img' not in st.session_state:
-    st.session_state.res_img = None
 
-# --- ESTILOS CSS FORMALES ---
+# --- ESTILO ---
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Serif+Pro:wght@400;600&display=swap');
-    
-    html, body, [class*="st-"] {
-        font-family: 'Source Serif Pro', serif;
-    }
-
-    /* Estilo del Botón Principal */
-    .stButton > button { 
-        width: 100%; 
-        border-radius: 2px; 
-        height: 3.5em; 
-        font-weight: 600; 
-        background-color: #2c3e50 !important; 
-        color: white !important; 
-        border: none; 
-        text-transform: uppercase; 
-        letter-spacing: 2px;
-        margin-top: 60px; /* Margen para bajar el botón notablemente */
-    }
-
-    .header-box { 
-        background-color: #f8f9fa; 
-        padding: 30px; 
-        border-bottom: 3px solid #2c3e50; 
-        margin-bottom: 30px; 
-        text-align: center;
-    }
-    
-    .header-box h1 { 
-        color: #2c3e50; 
-        margin: 0; 
-        font-family: 'Libre Baskerville', serif; 
-        font-size: 36px; 
-        font-weight: 700;
-    }
-
-    .report-container { 
-        border: 2px solid #2c3e50; 
-        padding: 40px; 
-        background-color: #ffffff; 
-        margin-top: 30px;
-        box-shadow: 5px 5px 15px rgba(0,0,0,0.05);
-    }
-
-    .report-header { 
-        border-bottom: 1px solid #2c3e50; 
-        margin-bottom: 30px; 
-        padding-bottom: 10px; 
-        color: #2c3e50; 
-        font-size: 22px; 
-        font-weight: 700; 
-        text-align: center; 
-        font-family: 'Libre Baskerville', serif;
-    }
-
-    .data-label { color: #7f8c8d; font-size: 13px; text-transform: uppercase; font-weight: 600; }
-    .data-value { color: #2c3e50; font-size: 20px; margin-bottom: 20px; }
-    
-    .result-box {
-        background-color: #fdfdfd; 
-        text-align: center; 
-        border: 1px solid #dcdde1; 
-        padding: 30px; 
-        margin-top: 30px;
-    }
+    html, body, [class*="st-"] { font-family: 'Source Serif Pro', serif; }
+    .stButton > button { width: 100%; border-radius: 2px; height: 3.5em; font-weight: 600; background-color: #2c3e50 !important; color: white !important; margin-top: 50px; }
+    .header-box { background-color: #f8f9fa; padding: 30px; border-bottom: 3px solid #2c3e50; text-align: center; margin-bottom: 30px; }
+    .report-container { border: 2px solid #2c3e50; padding: 40px; background-color: #ffffff; box-shadow: 5px 5px 15px rgba(0,0,0,0.05); }
 </style>
 <div class="header-box">
-    <h1>PLATAFORMA DE DIAGNÓSTICO DIGITAL</h1>
-    <p style="letter-spacing: 2px; color: #7f8c8d; font-size: 14px;">MÓDULO DE ANÁLISIS CLÍNICO AVANZADO</p>
+    <h1 style="font-family: 'Libre Baskerville', serif;">PLATAFORMA DE DIAGNÓSTICO DIGITAL</h1>
 </div>
 """, unsafe_allow_html=True)
 
-# --- FLUJO DE ENTRADA DE DATOS ---
 if not st.session_state.analizado:
-    st.markdown('<p style="text-align:center; font-size:18px; color:#34495e;">Por favor, rellene los datos solicitados e inserte la mamografía para su análisis facultativo.</p>', unsafe_allow_html=True)
-    
-    expediente = st.text_input("Número de Expediente:", value="00478119")
+    exp = st.text_input("Número de Expediente:", value="00478119")
     c1, c2, c3 = st.columns(3)
-    nombre = c1.text_input("Nombre(s):", value="Ana")
-    a_pat = c2.text_input("Apellido Paterno:", value="Reyes")
-    a_mat = c3.text_input("Apellido Materno:", value="Morales")
-    
-    uploader = st.file_uploader("Seleccionar Imagen Radiográfica (JPG/PNG)", type=["jpg", "png", "jpeg"])
+    nom = c1.text_input("Nombre(s):", value="Ana")
+    ap = c2.text_input("Apellido Paterno:", value="Reyes")
+    am = c3.text_input("Apellido Materno:", value="Morales")
+    uploader = st.file_uploader("Seleccionar Imagen Radiográfica", type=["jpg", "png", "jpeg"])
 
     if st.button("INICIAR PROTOCOLO DE ANÁLISIS"):
-        if not uploader:
-            st.warning("Se requiere la carga de una imagen radiográfica.")
-        else:
-            with st.spinner("Ejecutando algoritmos de segmentación..."):
+        if uploader:
+            with st.spinner("Procesando..."):
                 try:
-                    # 1. IA Roboflow
-                    file_bytes = np.asarray(bytearray(uploader.read()), dtype=np.uint8)
-                    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
+                    # 1. IA
+                    img = cv2.imdecode(np.frombuffer(uploader.read(), np.uint8), 1)
                     h, w, _ = img.shape
-                    
                     _, buffer = cv2.imencode('.jpg', img)
                     img_64 = base64.b64encode(buffer).decode('utf-8')
+                    res = requests.post(f"https://outline.roboflow.com/{ENDPOINT_ROBOFLOW}?api_key={API_KEY_ROBOFLOW}&confidence=40", data=img_64, headers={"Content-Type": "application/x-www-form-urlencoded"}).json()
                     
-                    res = requests.post(
-                        f"https://outline.roboflow.com/{ENDPOINT_ROBOFLOW}?api_key={API_KEY_ROBOFLOW}&confidence=40",
-                        data=img_64,
-                        headers={"Content-Type": "application/x-www-form-urlencoded"}
-                    )
-                    prediction = res.json()
-                    
-                    # 2. Procesamiento de Segmentación
-                    pix_tumor = 0
-                    porcentaje = 0.0
                     mask = np.zeros((h, w), dtype=np.uint8)
-                    
-                    if "predictions" in prediction:
-                        preds = [p for p in prediction['predictions'] if p.get('class') == 'tumor']
-                        for p in preds:
+                    for p in res.get('predictions', []):
+                        if p['class'] == 'tumor':
                             pts = np.array([(int(pt['x']), int(pt['y'])) for pt in p['points']], np.int32)
                             cv2.fillPoly(mask, [pts], 255)
-                        
-                        pix_tumor = int(np.count_nonzero(mask))
-                        porcentaje = float((pix_tumor / (h * w)) * 100)
-
-                    # Creación de imagen resultante
+                    
+                    pix_tumor = int(np.count_nonzero(mask))
+                    porc = (pix_tumor / (h * w)) * 100
                     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                    overlay = img_rgb.copy()
-                    overlay[mask > 0] = [255, 0, 0] 
-                    res_img = cv2.addWeighted(img_rgb, 0.8, overlay, 0.2, 0)
+                    img_rgb[mask > 0] = [255, 0, 0]
 
-                    # 3. Almacenamiento en ImgBB
-                    api_key_imgbb = st.secrets["API_KEY_IMGBB"]
-                    _, img_encoded = cv2.imencode('.jpg', cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR))
-                    img_bb_64 = base64.b64encode(img_encoded).decode('utf-8')
-                    url_imagen = requests.post("https://api.imgbb.com/1/upload", data={"key": api_key_imgbb, "image": img_bb_64}).json()["data"]["url"]
+                    # 2. Link Imagen
+                    _, enc = cv2.imencode('.jpg', cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR))
+                    url = requests.post("https://api.imgbb.com/1/upload", data={"key": st.secrets["API_KEY_IMGBB"], "image": base64.b64encode(enc).decode('utf-8')}).json()["data"]["url"]
 
-                    # 4. Registro en Base de Datos (Google Sheets)
-                    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    if "gcp_service_account" in st.secrets:
-                        info = dict(st.secrets["gcp_service_account"])
-                        info["private_key"] = info["private_key"].replace("\\n", "\n")
-                        creds = Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/spreadsheets"])
-                        gc = gspread.authorize(creds)
-                        sh = gc.open_by_key(SHEET_ID).sheet1
-                        
-                        sh.append_row([
-                            now_str, expediente, nombre, a_pat, a_mat, int(h*w), pix_tumor, round(porcentaje, 4), url_imagen
-                        ])
+                    # 3. Google Sheets
+                    info = dict(st.secrets["gcp_service_account"])
+                    info["private_key"] = info["private_key"].replace("\\n", "\n")
+                    creds = Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+                    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    gspread.authorize(creds).open_by_key(SHEET_ID).sheet1.append_row([now, exp, nom, ap, am, h*w, pix_tumor, round(porc, 4), url])
 
-                    # Actualización de estados
-                    st.session_state.res_img = res_img
-                    st.session_state.datos_reporte = {
-                        "paciente": f"{nombre} {a_pat} {a_mat}",
-                        "expediente": expediente,
-                        "totales": f"{h*w:,}",
-                        "tumor": f"{pix_tumor:,}",
-                        "porcentaje": porcentaje,
-                        "url": url_imagen,
-                        "fecha": now_str
-                    }
+                    st.session_state.res_img = img_rgb
+                    st.session_state.dat = {"p": f"{nom} {ap} {am}", "e": exp, "t": f"{h*w:,}", "tm": f"{pix_tumor:,}", "pc": porc, "u": url, "f": now}
                     st.session_state.analizado = True
                     st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"Error en el protocolo: {e}")
+                except Exception as e: st.error(f"Error: {e}")
 
-# --- PANTALLA DE RESULTADOS ---
-if st.session_state.analizado and st.session_state.datos_reporte:
+if st.session_state.analizado:
     st.image(st.session_state.res_img, use_container_width=True)
-    
-    d = st.session_state.datos_reporte
-    
+    d = st.session_state.dat
     st.markdown(f"""
     <div class="report-container">
-        <div class="report-header">INFORME TÉCNICO DE SEGMENTACIÓN RADIOLÓGICA</div>
-        <div style="display: flex; justify-content: space-between;">
-            <div style="width: 45%;">
-                <p class="data-label">Paciente</p><p class="data-value">{d['paciente']}</p>
-                <p class="data-label">Resolución Total</p><p class="data-value">{d['totales']} px</p>
-            </div>
-            <div style="width: 45%; text-align: right;">
-                <p class="data-label">Expediente</p><p class="data-value">{d['expediente']}</p>
-                <p class="data-label">Detección Tumoral</p><p class="data-value" style="font-weight:700;">{d['tumor']} px</p>
-            </div>
-        </div>
-        <div class="result-box">
-            <p class="data-label">Proporción de Ocupación Tumoral</p>
-            <h1 style="color: #2c3e50; margin:10px 0; font-size: 58px; font-family: 'Libre Baskerville', serif;">{d['porcentaje']:.4f} %</h1>
-        </div>
-        <p style="color: #2c3e50; font-size: 14px; margin-top: 30px; text-align: center; border-top: 1px solid #eee; padding-top: 15px; font-weight: 600;">
+        <h2 style="text-align:center; font-family: 'Libre Baskerville', serif;">INFORME TÉCNICO DE SEGMENTACIÓN</h2>
+        <p><b>Paciente:</b> {d['p']} | <b>Expediente:</b> {d['e']}</p>
+        <p><b>Resolución:</b> {d['t']} px | <b>Detección:</b> {d['tm']} px</p>
+        <h1 style="text-align:center; color:#2c3e50; font-size: 58px;">{d['pc']:.4f} %</h1>
+        <p style="text-align:center; font-weight:600; color:#2c3e50; border-top: 1px solid #eee; padding-top:20px;">
             LA INFORMACIÓN HA SIDO ACTUALIZADA EXITOSAMENTE EN LA BASE DE DATOS.
         </p>
-        <p style="text-align: center; font-size: 13px;">
-            <a href="{EXCEL_LINK}" target="_blank" style="color: #2980b9; text-decoration: none; margin-right: 20px;">[ CONSULTAR BASE DE DATOS (EXCEL) ]</a>
-            <a href="{d['url']}" target="_blank" style="color: #2980b9; text-decoration: none;">[ VER EVIDENCIA DIGITAL ]</a>
+        <p style="text-align:center;">
+            <a href="{EXCEL_URL}" target="_blank">[ CONSULTAR BASE DE DATOS (EXCEL) ]</a>
+            <a href="{d['u']}" target="_blank" style="margin-left:20px;">[ VER EVIDENCIA DIGITAL ]</a>
         </p>
     </div>
     """, unsafe_allow_html=True)
-    
     if st.button("REALIZAR NUEVO ANÁLISIS"):
         st.session_state.analizado = False
-        st.session_state.datos_reporte = None
         st.rerun()
-
-st.markdown("<br><br>", unsafe_allow_html=True)
