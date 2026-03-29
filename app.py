@@ -42,9 +42,9 @@ if not st.session_state.analizado:
 
     if st.button("INICIAR PROTOCOLO DE ANÁLISIS"):
         if uploader:
-            with st.spinner("Procesando..."):
+            with st.spinner("Procesando análisis..."):
                 try:
-                    # 1. IA
+                    # 1. Procesar Imagen e IA
                     img = cv2.imdecode(np.frombuffer(uploader.read(), np.uint8), 1)
                     h, w, _ = img.shape
                     _, buffer = cv2.imencode('.jpg', img)
@@ -62,11 +62,11 @@ if not st.session_state.analizado:
                     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                     img_rgb[mask > 0] = [255, 0, 0]
 
-                    # 2. Link Imagen
+                    # 2. Link de Imagen (ImgBB)
                     _, enc = cv2.imencode('.jpg', cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR))
                     url = requests.post("https://api.imgbb.com/1/upload", data={"key": st.secrets["API_KEY_IMGBB"], "image": base64.b64encode(enc).decode('utf-8')}).json()["data"]["url"]
 
-                    # 3. Google Sheets
+                    # 3. Google Sheets (Conexión directa)
                     info = dict(st.secrets["gcp_service_account"])
                     info["private_key"] = info["private_key"].replace("\\n", "\n")
                     creds = Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/spreadsheets"])
