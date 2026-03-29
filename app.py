@@ -14,50 +14,136 @@ ENDPOINT_ROBOFLOW = "segmentacion-tumores-mamografia-sn1wk/5"
 SHEET_ID = "1sdmCsIJmRz84Fu26KtTrE_rTTh7SzoS5womeVctnXQ4"
 
 # --- CONFIGURACION DE PAGINA ---
-st.set_page_config(page_title="Plataforma de Diagnostico Digital", layout="wide")
+st.set_page_config(page_title="Sistema de Diagnostico Digital", layout="wide")
 
 if 'analizado' not in st.session_state:
     st.session_state.analizado = False
 if 'datos_reporte' not in st.session_state:
     st.session_state.datos_reporte = None
 
-# --- ESTILOS CSS ---
+# --- ESTILOS CSS FORMALES ---
 st.markdown("""
 <style>
-    .stButton > button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; background-color: #1e88e5 !important; color: white !important; border: none; }
-    .header-box { background-color: #34495e; padding: 25px; border-radius: 5px; border-left: 10px solid #3498db; margin-bottom: 20px; }
-    .header-box h1 { color: white; margin: 0; font-family: sans-serif; font-size: 42px; }
-    .instruction-text { color: #576574; font-size: 16px; margin-bottom: 20px; font-style: italic; }
-    .report-container { border: 1px solid #ced4da; padding: 20px; border-radius: 10px; background-color: white; font-family: sans-serif; margin-top: 20px; }
-    .report-header { border-bottom: 2px solid #3498db; margin-bottom: 20px; padding-bottom: 10px; color: #2c3e50; font-size: 24px; text-transform: uppercase; }
-    .data-label { color: #95a5a6; font-size: 12px; text-transform: uppercase; margin-bottom: 2px; font-weight: bold; }
-    .data-value { color: #2c3e50; font-weight: bold; font-size: 18px; margin-bottom: 15px; }
-    .pixel-value { color: #c0392b; font-weight: bold; font-size: 18px; }
+    /* Importación de fuente formal y configuración global */
+    @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Serif+Pro:wght@400;600&display=swap');
+    
+    html, body, [class*="st-"] {
+        font-family: 'Source Serif Pro', serif;
+    }
+
+    .stButton > button { 
+        width: 100%; 
+        border-radius: 2px; 
+        height: 3em; 
+        font-weight: 600; 
+        background-color: #2c3e50 !important; 
+        color: white !important; 
+        border: none;
+        font-family: 'Source Serif Pro', serif;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .header-box { 
+        background-color: #f8f9fa; 
+        padding: 30px; 
+        border-radius: 0; 
+        border-bottom: 3px solid #2c3e50; 
+        margin-bottom: 30px; 
+        text-align: center;
+    }
+    .header-box h1 { 
+        color: #2c3e50; 
+        margin: 0; 
+        font-family: 'Libre Baskerville', serif; 
+        font-size: 36px; 
+        font-weight: 700;
+    }
+    .header-box p {
+        color: #7f8c8d;
+        font-family: 'Source Serif Pro', serif;
+        letter-spacing: 2px;
+        margin-top: 10px;
+    }
+
+    .instruction-text { 
+        color: #34495e; 
+        font-size: 18px; 
+        margin-bottom: 25px; 
+        text-align: center;
+        border-top: 1px solid #eee;
+        padding-top: 15px;
+    }
+
+    .report-container { 
+        border: 2px solid #2c3e50; 
+        padding: 40px; 
+        background-color: #ffffff; 
+        font-family: 'Source Serif Pro', serif; 
+        margin-top: 30px;
+        box-shadow: 5px 5px 15px rgba(0,0,0,0.05);
+    }
+    .report-header { 
+        border-bottom: 1px solid #2c3e50; 
+        margin-bottom: 30px; 
+        padding-bottom: 10px; 
+        color: #2c3e50; 
+        font-size: 22px; 
+        font-weight: 700;
+        text-align: center;
+        font-family: 'Libre Baskerville', serif;
+    }
+    .data-label { 
+        color: #7f8c8d; 
+        font-size: 13px; 
+        text-transform: uppercase; 
+        margin-bottom: 5px; 
+        font-weight: 600; 
+        letter-spacing: 1px;
+    }
+    .data-value { 
+        color: #2c3e50; 
+        font-weight: 400; 
+        font-size: 20px; 
+        margin-bottom: 20px; 
+    }
+    .pixel-value { 
+        color: #2c3e50; 
+        font-weight: 700; 
+        font-size: 20px; 
+    }
+    .result-box {
+        background-color: #fdfdfd; 
+        text-align: center; 
+        border: 1px solid #dcdde1; 
+        padding: 30px; 
+        margin-top: 30px;
+    }
 </style>
 <div class="header-box">
-    <h1>Plataforma de Diagnostico Digital</h1>
-    <p style="color: #bdc3c7; margin: 5px 0 0 0; font-size: 18px; text-transform: uppercase;">Modulo de Analisis Clinico Avanzado</p>
+    <h1>PLATAFORMA DE DIAGNÓSTICO DIGITAL</h1>
+    <p>MÓDULO DE ANÁLISIS CLÍNICO AVANZADO</p>
 </div>
 """, unsafe_allow_html=True)
 
 # --- FLUJO DE TRABAJO ---
 if not st.session_state.analizado:
-    st.markdown('<p class="instruction-text">Por favor, rellene los datos solicitados e inserte la mamografia para su analisis.</p>', unsafe_allow_html=True)
+    st.markdown('<p class="instruction-text">Por favor, rellene los datos solicitados e inserte la mamografía para su análisis facultativo.</p>', unsafe_allow_html=True)
     
-    expediente = st.text_input("No. de Expediente:", value="00478119")
+    expediente = st.text_input("Número de Expediente:", value="00478119")
 
     c1, c2, c3 = st.columns(3)
     nombre = c1.text_input("Nombre(s):", value="Ana")
-    a_pat = c2.text_input("A. Paterno:", value="Reyes")
-    a_mat = c3.text_input("A. Materno:", value="Morales")
+    a_pat = c2.text_input("Apellido Paterno:", value="Reyes")
+    a_mat = c3.text_input("Apellido Materno:", value="Morales")
 
-    uploader = st.file_uploader("Subir Imagen Radiografica", type=["jpg", "png", "jpeg"])
+    uploader = st.file_uploader("Seleccionar Imagen Radiográfica (Formato JPG/PNG)", type=["jpg", "png", "jpeg"])
 
-    if st.button("Ejecutar Analisis Clinico"):
+    if st.button("INICIAR PROTOCOLO DE ANÁLISIS"):
         if not uploader:
-            st.warning("Cargue una imagen antes de continuar.")
+            st.warning("Se requiere la carga de una imagen para proceder.")
         else:
-            with st.spinner("Procesando analisis clinico..."):
+            with st.spinner("Ejecutando algoritmos de segmentación..."):
                 try:
                     # 1. IA Roboflow
                     file_bytes = np.asarray(bytearray(uploader.read()), dtype=np.uint8)
@@ -83,7 +169,7 @@ if not st.session_state.analizado:
                         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                         overlay = img_rgb.copy()
                         overlay[mask > 0] = [255, 0, 0]
-                        res_img = cv2.addWeighted(img_rgb, 0.7, overlay, 0.3, 0)
+                        res_img = cv2.addWeighted(img_rgb, 0.8, overlay, 0.2, 0)
 
                         # 2. Subida a ImgBB
                         api_key_imgbb = st.secrets["API_KEY_IMGBB"]
@@ -92,25 +178,23 @@ if not st.session_state.analizado:
                         response_bb = requests.post("https://api.imgbb.com/1/upload", data={"key": api_key_imgbb, "image": img_bb_64})
                         url_imagen = response_bb.json()["data"]["url"]
 
-                        # 3. Google Sheets (Conexion Directa mediante Secrets)
+                        # 3. Google Sheets
                         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                         if "gcp_service_account" in st.secrets:
                             info = dict(st.secrets["gcp_service_account"])
                             info["private_key"] = info["private_key"].replace("\\n", "\n")
-                            
                             creds = Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/spreadsheets"])
                             gc = gspread.authorize(creds)
                             sh = gc.open_by_key(SHEET_ID).sheet1
-                            
                             sh.append_row([now_str, str(expediente), str(nombre), str(a_pat), str(a_mat), int(h*w), pix_tumor, round(porcentaje, 4), url_imagen])
 
-                        # Guardar estado para el reporte
+                        # Guardar estado
                         st.session_state.res_img = res_img
                         st.session_state.datos_reporte = {
                             "paciente": f"{nombre} {a_pat} {a_mat}",
                             "expediente": expediente,
-                            "totales": f"{h*w:,} px",
-                            "tumor": f"{pix_tumor:,} px",
+                            "totales": f"{h*w:,}",
+                            "tumor": f"{pix_tumor:,}",
                             "porcentaje": porcentaje,
                             "url": url_imagen,
                             "fecha": now_str
@@ -118,42 +202,43 @@ if not st.session_state.analizado:
                         st.session_state.analizado = True
                         st.rerun()
                 except Exception as e:
-                    st.error(f"Error tecnico: {e}")
+                    st.error(f"Error técnico detectado: {e}")
 
-# --- SECCION DE RESULTADOS ---
+# --- RESULTADOS ---
 if st.session_state.analizado and st.session_state.datos_reporte:
     st.image(st.session_state.res_img, use_container_width=True)
     
     d = st.session_state.datos_reporte
     st.markdown(f"""
     <div class="report-container">
-        <div class="report-header">Reporte Tecnico de Segmentacion</div>
+        <div class="report-header">INFORME TÉCNICO DE SEGMENTACIÓN RADIOLÓGICA</div>
         <div style="display: flex; justify-content: space-between;">
-            <div>
-                <p class="data-label">Paciente</p>
+            <div style="width: 45%;">
+                <p class="data-label">Identificación del Paciente</p>
                 <p class="data-value">{d['paciente']}</p>
-                <p class="data-label">Pixeles Totales</p>
-                <p class="data-value">{d['totales']}</p>
+                <p class="data-label">Resolución Total (Píxeles)</p>
+                <p class="data-value">{d['totales']} px</p>
             </div>
-            <div style="text-align: right;">
-                <p class="data-label">Expediente</p>
+            <div style="width: 45%; text-align: right;">
+                <p class="data-label">Código de Expediente</p>
                 <p class="data-value">{d['expediente']}</p>
-                <p class="data-label">Pixeles Tumor</p>
-                <p class="pixel-value">{d['tumor']}</p>
+                <p class="data-label">Detección Tumoral (Píxeles)</p>
+                <p class="pixel-value">{d['tumor']} px</p>
             </div>
         </div>
-        <div style="background-color: #fff5f0; text-align: center; border: 1px solid #e67e22; padding: 25px; border-radius: 10px; margin-top: 20px;">
-            <p style="color: #e67e22; margin:0; font-weight: bold; text-transform: uppercase; font-size: 14px;">Area de Ocupacion Tumoral</p>
-            <h1 style="color: #c23616; margin:0; font-size: 65px;">{d['porcentaje']:.4f} %</h1>
+        <div class="result-box">
+            <p style="color: #2c3e50; margin:0; font-weight: 600; text-transform: uppercase; font-size: 14px; letter-spacing: 1px;">Proporción de Ocupación Tumoral</p>
+            <h1 style="color: #2c3e50; margin:10px 0; font-size: 58px; font-family: 'Libre Baskerville', serif;">{d['porcentaje']:.4f} %</h1>
         </div>
-        <p style="color: #95a5a6; font-size: 12px; margin-top: 15px; text-align: center;">
-            Evidencia: <a href="{d['url']}" target="_blank">Ver imagen analizada</a> | Sincronizado: {d['fecha']}
+        <p style="color: #95a5a6; font-size: 13px; margin-top: 30px; text-align: center; border-top: 1px solid #eee; padding-top: 10px;">
+            Documento generado digitalmente. Registro sincronizado el {d['fecha']}.<br>
+            <a href="{d['url']}" target="_blank" style="color: #3498db; text-decoration: none;">Acceder a evidencia radiográfica de respaldo</a>
         </p>
     </div>
     """, unsafe_allow_html=True)
 
     st.write("---")
-    if st.button("Nuevo Estudio"):
+    if st.button("GENERAR NUEVO REGISTRO"):
         st.session_state.analizado = False
         st.session_state.datos_reporte = None
         st.rerun()
