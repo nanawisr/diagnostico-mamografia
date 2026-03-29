@@ -14,7 +14,6 @@ ENDPOINT_ROBOFLOW = "segmentacion-tumores-mamografia-sn1wk/5"
 SHEET_ID = "1sdmCsIJmRz84Fu26KtTrE_rTTh7SzoS5womeVctnXQ4"
 EXCEL_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit"
 
-# --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Plataforma Médica Digital", layout="wide")
 
 if 'analizado' not in st.session_state:
@@ -25,16 +24,9 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Source+Serif+Pro:wght@400;600&display=swap');
     html, body, [class*="st-"] { font-family: 'Source Serif Pro', serif; }
-    
-    .stButton > button { 
-        width: 100%; border-radius: 2px; height: 3.5em; font-weight: 600; 
-        background-color: #2c3e50 !important; color: white !important; 
-        margin-top: 60px; text-transform: uppercase; letter-spacing: 2px;
-    }
-    
+    .stButton > button { width: 100%; border-radius: 2px; height: 3.5em; font-weight: 600; background-color: #2c3e50 !important; color: white !important; margin-top: 50px; text-transform: uppercase; letter-spacing: 2px;}
     .header-box { background-color: #f8f9fa; padding: 30px; border-bottom: 3px solid #2c3e50; text-align: center; margin-bottom: 30px; }
     .header-box h1 { color: #2c3e50; font-family: 'Libre Baskerville', serif; font-size: 32px; }
-    
     .report-container { border: 2px solid #2c3e50; padding: 40px; background-color: #ffffff; box-shadow: 5px 5px 15px rgba(0,0,0,0.05); }
     .result-box { background-color: #fdfdfd; text-align: center; border: 1px solid #dcdde1; padding: 30px; margin-top: 20px; }
 </style>
@@ -44,35 +36,28 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# --- FLUJO PRINCIPAL ---
 if not st.session_state.analizado:
-    st.markdown('<p style="text-align:center;">Introduzca los datos del paciente y cargue la placa original.</p>', unsafe_allow_html=True)
-    
     exp = st.text_input("No. Expediente:", value="00478119")
     col1, col2, col3 = st.columns(3)
     nom = col1.text_input("Nombre(s):", value="Ana")
     ap = col2.text_input("Ap. Paterno:", value="Reyes")
     am = col3.text_input("Ap. Materno:", value="Morales")
-    
     uploader = st.file_uploader("Cargar Placa Mamográfica", type=["jpg", "png", "jpeg"])
 
     if st.button("INICIAR PROCESAMIENTO"):
         if uploader:
             with st.spinner("Ejecutando algoritmos..."):
                 try:
-                    # 1. Cargar imagen original (sin alterar)
+                    # 1. Cargar imagen original
                     raw_bytes = uploader.read()
                     img = cv2.imdecode(np.frombuffer(raw_bytes, np.uint8), cv2.IMREAD_COLOR)
                     h, w, _ = img.shape
                     
-                    # 2. IA Roboflow (Enviamos copia pero trabajamos sobre la original)
+                    # 2. IA Roboflow
                     _, buffer = cv2.imencode('.jpg', img)
                     img_64 = base64.b64encode(buffer).decode('utf-8')
-                    res = requests.post(
-                        f"https://outline.roboflow.com/{ENDPOINT_ROBOFLOW}?api_key={API_KEY_ROBOFLOW}",
-                        data=img_64,
-                        headers={"Content-Type": "application/x-www-form-urlencoded"}
-                    ).json()
+                    res = requests.post(f"https://outline.roboflow.com/{ENDPOINT_ROBOFLOW}?api_key={API_KEY_ROBOFLOW}",
+                                        data=img_64, headers={"Content-Type": "application/x-www-form-urlencoded"}).json()
                     
                     # 3. Dibujar Máscara sobre la imagen ORIGINAL (Evita el giro)
                     mask = np.zeros((h, w), dtype=np.uint8)
@@ -84,52 +69,42 @@ if not st.session_state.analizado:
                     
                     pix_tumor = int(np.count_nonzero(mask))
                     porc = (pix_tumor / (h * w)) * 100
-                    
-                    # Fusionar máscara roja con la imagen original intacta
                     img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                     res_img = img_rgb.copy()
-                    res_img[mask > 0] = [255, 0, 0] # Color rojo para el tumor
+                    res_img[mask > 0] = [255, 0, 0]
 
-                    # 4. Subir a ImgBB para el link permanente
+                    # 4. Subir a ImgBB
                     _, enc = cv2.imencode('.jpg', cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR))
-                    img_url = requests.post(
-                        "https://api.imgbb.com/1/upload", 
-                        data={"key": st.secrets["API_KEY_IMGBB"], "image": base64.b64encode(enc).decode('utf-8')}
-                    ).json()["data"]["url"]
+                    img_url = requests.post("https://api.imgbb.com/1/upload", 
+                                            data={"key": st.secrets["API_KEY_IMGBB"], "image": base64.b64encode(enc).decode('utf-8')}).json()["data"]["url"]
 
-                    # 5. Registro en Google Sheets (Evitando sobreescritura)
-                    decoded_gcp = base64.b64decode(st.secrets["GCP_JSON_BASE64"]).decode("utf-8")
-                    info = json.loads(decoded_json)
-                    info["private_key"] = info["private_key"].replace("\\n", "\n")
-                    
-                    creds = Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/spreadsheets"])
-                    gc = gspread.authorize(creds)
-                    sheet = gc.open_by_key(SHEET_ID).sheet1
-                    
-                    # Buscamos la fila vacía real
-                    num_fila = len(sheet.get_all_values()) + 1
-                    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    nueva_fila = [now, exp, nom, ap, am, h*w, pix_tumor, round(porc, 4), img_url]
-                    
-                    sheet.insert_row(nueva_fila, num_fila)
+                    # 5. Registro en Google Sheets (FIXED)
+                    if "GCP_JSON_BASE64" in st.secrets:
+                        # Corregimos el nombre de la variable aquí
+                        decoded_data = base64.b64decode(st.secrets["GCP_JSON_BASE64"]).decode("utf-8")
+                        info = json.loads(decoded_data)
+                        info["private_key"] = info["private_key"].replace("\\n", "\n")
+                        
+                        creds = Credentials.from_service_account_info(info, scopes=["https://www.googleapis.com/auth/spreadsheets"])
+                        gc = gspread.authorize(creds)
+                        sheet = gc.open_by_key(SHEET_ID).sheet1
+                        
+                        # Buscamos fila vacía para NO sobreescribir
+                        num_fila = len(sheet.get_all_values()) + 1
+                        now = datetime.now().strftime("%Y-%m-%d %H:%M")
+                        nueva_fila = [now, exp, nom, ap, am, h*w, pix_tumor, round(porc, 4), img_url]
+                        sheet.insert_row(nueva_fila, num_fila)
 
-                    # Guardar en estado de sesión
                     st.session_state.res_img = res_img
-                    st.session_state.dat = {
-                        "p": f"{nom} {ap} {am}", "e": exp, "t": f"{h*w:,}", 
-                        "tm": f"{pix_tumor:,}", "pc": porc, "u": img_url, "f": now
-                    }
+                    st.session_state.dat = {"p": f"{nom} {ap} {am}", "e": exp, "t": f"{h*w:,}", "tm": f"{pix_tumor:,}", "pc": porc, "u": img_url, "f": now}
                     st.session_state.analizado = True
                     st.rerun()
-                    
                 except Exception as e:
                     st.error(f"Error en el sistema: {e}")
 
-# --- PANTALLA DE RESULTADOS ---
 if st.session_state.analizado:
     st.image(st.session_state.res_img, use_container_width=True)
     d = st.session_state.dat
-    
     st.markdown(f"""
     <div class="report-container">
         <h2 style="text-align:center; font-family: 'Libre Baskerville', serif;">INFORME TÉCNICO DE ANÁLISIS</h2>
@@ -141,16 +116,13 @@ if st.session_state.analizado:
             <p style="color: #7f8c8d; font-size: 14px;">PORCENTAJE DE OCUPACIÓN</p>
             <h1 style="color: #2c3e50; font-size: 60px;">{d['pc']:.4f} %</h1>
         </div>
-        <p style="text-align:center; color:#2c3e50; margin-top:20px; font-weight:600;">
-            BASE DE DATOS ACTUALIZADA CORRECTAMENTE.
-        </p>
+        <p style="text-align:center; color:#2c3e50; margin-top:20px; font-weight:600;">BASE DE DATOS ACTUALIZADA CORRECTAMENTE.</p>
         <p style="text-align:center;">
             <a href="{EXCEL_URL}" target="_blank">[ CONSULTAR BASE DE DATOS EXCEL ]</a>
             <a href="{d['u']}" target="_blank" style="margin-left:20px;">[ EVIDENCIA DIGITAL ]</a>
         </p>
     </div>
     """, unsafe_allow_html=True)
-    
     if st.button("REALIZAR NUEVO DIAGNÓSTICO"):
         st.session_state.analizado = False
         st.rerun()
