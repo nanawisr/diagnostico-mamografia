@@ -10,7 +10,7 @@ from google.oauth2.service_account import Credentials
 
 # --- CONFIGURACIÓN MAESTRA ---
 API_KEY_ROBOFLOW = "nOMi9VHi25eRhP420XFn"
-ENDPOINT_ROBOFLOW = "segmentacion-tumores-mamografia-sn1wk/3"
+ENDPOINT_ROBOFLOW = "segmentacion-tumores-mamografia-sn1wk/5"
 SHEET_ID = "1sdmCsIJmRz84Fu26KtTrE_rTTh7SzoS5womeVctnXQ4"
 EXCEL_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit"
 
